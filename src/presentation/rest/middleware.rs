@@ -37,7 +37,8 @@ pub async fn logging_middleware(
         .headers()
         .get("x-request-id")
         .and_then(|v| v.to_str().ok())
-        .unwrap_or("unknown");
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "unknown".to_string());
     
     info!(
         request_id = request_id,

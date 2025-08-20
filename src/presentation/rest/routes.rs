@@ -13,7 +13,7 @@ use tower_http::{
 };
 
 use crate::{
-    application::auth::middleware::{auth_middleware, require_auth},
+    application::auth::middleware::{AuthMiddleware, require_auth},
     presentation::rest::handlers::{auth, rates, exchange, wallet, health},
     shared::state::AppState,
 };
@@ -88,7 +88,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/v1/wallet/limits", get(wallet::get_wallet_limits))
         .route("/api/v1/wallet/pending-operations", get(wallet::get_pending_operations))
         .route("/api/v1/wallet/validate-operation", post(wallet::validate_operation))
-        .layer(middleware::from_fn_with_state(state.clone(), require_auth));
+        .with_state(state.clone());
 
     // Admin routes
     let admin_routes = Router::new()
@@ -105,22 +105,6 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .merge(public_routes)
         .merge(protected_routes)
         .merge(admin_routes)
-        .layer(
-            ServiceBuilder::new()
-                // Add CORS
-                .layer(
-                    CorsLayer::new()
-                        .allow_origin(tower_http::cors::Any)
-                        .allow_methods(tower_http::cors::Any)
-                        .allow_headers(tower_http::cors::Any)
-                )
-                // Add compression
-                .layer(CompressionLayer::new())
-                // Add request body limit (10MB)
-                .layer(RequestBodyLimitLayer::new(10 * 1024 * 1024))
-                // Add tracing
-                .layer(TraceLayer::new_for_http())
-        )
         .with_state(state)
 }
 

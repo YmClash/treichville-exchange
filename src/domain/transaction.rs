@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
 #[sqlx(type_name = "transaction_type", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum TransactionType {
@@ -15,7 +15,7 @@ pub enum TransactionType {
     Withdrawal,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
 #[sqlx(type_name = "transaction_status", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum TransactionStatus {
@@ -28,7 +28,7 @@ pub enum TransactionStatus {
     Failed,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, sqlx::Type)]
 #[sqlx(type_name = "payment_method", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum PaymentMethod {
@@ -180,7 +180,7 @@ impl Transaction {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct TransactionEvent {
     pub id: Uuid,
     pub transaction_id: Uuid,

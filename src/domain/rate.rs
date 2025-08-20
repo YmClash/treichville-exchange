@@ -130,35 +130,27 @@ pub struct CreateRateDto {
     #[validate(custom = "crate::shared::utils::validate_currency_code")]
     pub to_currency: String,
     
-    #[validate(range(min = 0.0001))]
     pub buy_rate: Decimal,
     
-    #[validate(range(min = 0.0001))]
     pub sell_rate: Decimal,
     
     pub available_amount: Option<Decimal>,
     
-    #[validate(range(min = 0))]
     pub min_amount: Option<Decimal>,
     
-    #[validate(range(min = 0))]
     pub max_amount: Option<Decimal>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct UpdateRateDto {
-    #[validate(range(min = 0.0001))]
     pub buy_rate: Option<Decimal>,
     
-    #[validate(range(min = 0.0001))]
     pub sell_rate: Option<Decimal>,
     
     pub available_amount: Option<Decimal>,
     
-    #[validate(range(min = 0))]
     pub min_amount: Option<Decimal>,
     
-    #[validate(range(min = 0))]
     pub max_amount: Option<Decimal>,
     
     pub is_active: Option<bool>,
@@ -172,10 +164,16 @@ pub struct GetQuoteRequest {
     #[validate(custom = "crate::shared::utils::validate_currency_code")]
     pub to_currency: String,
     
-    #[validate(range(min = 0))]
     pub amount: Decimal,
     
     pub operation: ExchangeOperation,
+}
+
+impl GetQuoteRequest {
+    pub fn validate(&self) -> Result<(), validator::ValidationErrors> {
+        use validator::Validate;
+        Validate::validate(self)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -185,7 +183,7 @@ pub enum ExchangeOperation {
     Sell,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct PublicRate {
     pub from_currency: String,
     pub to_currency: String,

@@ -12,15 +12,16 @@ use rust_decimal::Decimal;
 use crate::{
     application::{
         auth::middleware::CurrentUser,
-        rates::{RateService, CreateRateDto, UpdateRateDto},
+        rates::RateService,
     },
     domain::{
-        rate::{GetQuoteRequest, ExchangeOperation},
+        rate::{GetQuoteRequest, ExchangeOperation, CreateRateDto, UpdateRateDto},
         user::UserRole,
     },
     shared::{
         errors::{AppError, AppResult},
         utils::PaginationParams,
+        state::AppState,
     },
 };
 
@@ -47,9 +48,9 @@ pub struct GetQuoteQuery {
 
 // GET /api/v1/rates/public
 pub async fn get_public_rates(
-    State(rate_service): State<std::sync::Arc<RateService>>,
+    State(state): State<std::sync::Arc<AppState>>,
 ) -> AppResult<impl IntoResponse> {
-    let rates = rate_service.get_public_rates().await?;
+    let rates = state.rate_service.get_public_rates().await?;
     
     Ok((StatusCode::OK, Json(rates)))
 }
@@ -57,9 +58,9 @@ pub async fn get_public_rates(
 // GET /api/v1/rates/best
 pub async fn get_best_rate(
     Query(params): Query<GetBestRateQuery>,
-    State(rate_service): State<std::sync::Arc<RateService>>,
+    State(state): State<std::sync::Arc<AppState>>,
 ) -> AppResult<impl IntoResponse> {
-    let response = rate_service
+    let response = state.rate_service
         .get_best_rates(&params.from, &params.to, params.amount)
         .await?;
     
@@ -69,7 +70,7 @@ pub async fn get_best_rate(
 // GET /api/v1/rates/quote
 pub async fn get_quote(
     Query(params): Query<GetQuoteQuery>,
-    State(rate_service): State<std::sync::Arc<RateService>>,
+    State(state): State<std::sync::Arc<AppState>>,
 ) -> AppResult<impl IntoResponse> {
     let operation = match params.operation.to_lowercase().as_str() {
         "buy" => ExchangeOperation::Buy,
@@ -84,7 +85,7 @@ pub async fn get_quote(
         operation,
     };
 
-    let quote = rate_service.get_quote(request).await?;
+    let quote = state.rate_service.get_quote(request).await?;
     
     Ok((StatusCode::OK, Json(quote)))
 }
@@ -92,12 +93,12 @@ pub async fn get_quote(
 // GET /api/v1/rates
 pub async fn get_rates(
     Query(params): Query<GetRatesQuery>,
-    State(rate_service): State<std::sync::Arc<RateService>>,
+    State(state): State<std::sync::Arc<AppState>>,
 ) -> AppResult<impl IntoResponse> {
     let rates = if let (Some(from), Some(to)) = (params.from, params.to) {
-        rate_service.get_rates_by_pair(&from, &to).await?
+        state.rate_service.get_rates_by_pair(&from, &to).await?
     } else {
-        rate_service.get_public_rates().await?
+        state.rate_service.get_public_rates().await?
             .into_iter()
             .map(|_| vec![])
             .flatten()
@@ -110,14 +111,14 @@ pub async fn get_rates(
 // GET /api/v1/rates/changeur
 pub async fn get_changeur_rates(
     Extension(user): Extension<CurrentUser>,
-    State(rate_service): State<std::sync::Arc<RateService>>,
+    State(state): State<std::sync::Arc<AppState>>,
 ) -> AppResult<impl IntoResponse> {
     // Check if user is a changeur
     if !user.is_changeur() {
         return Err(AppError::forbidden("Only changeurs can access their rates"));
     }
 
-    let rates = rate_service.get_changeur_rates(user.id).await?;
+    let rates = state.rate_service.get_changeur_rates(user.id).await?;
     
     Ok((StatusCode::OK, Json(rates)))
 }
@@ -125,7 +126,7 @@ pub async fn get_changeur_rates(
 // POST /api/v1/rates
 pub async fn create_rate(
     Extension(user): Extension<CurrentUser>,
-    State(rate_service): State<std::sync::Arc<RateService>>,
+    State(state): State<std::sync::Arc<AppState>>,
     Json(dto): Json<CreateRateDto>,
 ) -> AppResult<impl IntoResponse> {
     // Check if user is a changeur
@@ -133,7 +134,7 @@ pub async fn create_rate(
         return Err(AppError::forbidden("Only changeurs can create rates"));
     }
 
-    let rate = rate_service.create_rate(user.id, dto).await?;
+    let rate = state.rate_service.create_rate(user.id, dto).await?;
     
     Ok((StatusCode::CREATED, Json(rate)))
 }
@@ -142,7 +143,7 @@ pub async fn create_rate(
 pub async fn update_rate(
     Path(id): Path<Uuid>,
     Extension(user): Extension<CurrentUser>,
-    State(rate_service): State<std::sync::Arc<RateService>>,
+    State(state): State<std::sync::Arc<AppState>>,
     Json(dto): Json<UpdateRateDto>,
 ) -> AppResult<impl IntoResponse> {
     // Check if user is a changeur
@@ -150,7 +151,7 @@ pub async fn update_rate(
         return Err(AppError::forbidden("Only changeurs can update rates"));
     }
 
-    let rate = rate_service.update_rate(id, user.id, dto).await?;
+    let rate = state.rate_service.update_rate(id, user.id, dto).await?;
     
     Ok((StatusCode::OK, Json(rate)))
 }
@@ -159,14 +160,14 @@ pub async fn update_rate(
 pub async fn delete_rate(
     Path(id): Path<Uuid>,
     Extension(user): Extension<CurrentUser>,
-    State(rate_service): State<std::sync::Arc<RateService>>,
+    State(state): State<std::sync::Arc<AppState>>,
 ) -> AppResult<impl IntoResponse> {
     // Check if user is a changeur
     if !user.is_changeur() {
         return Err(AppError::forbidden("Only changeurs can delete rates"));
     }
 
-    rate_service.delete_rate(id, user.id).await?;
+    state.rate_service.delete_rate(id, user.id).await?;
     
     Ok((StatusCode::NO_CONTENT, ()))
 }
@@ -174,7 +175,7 @@ pub async fn delete_rate(
 // POST /api/v1/rates/bulk
 pub async fn bulk_update_rates(
     Extension(user): Extension<CurrentUser>,
-    State(rate_service): State<std::sync::Arc<RateService>>,
+    State(state): State<std::sync::Arc<AppState>>,
     Json(updates): Json<Vec<BulkRateUpdate>>,
 ) -> AppResult<impl IntoResponse> {
     // Check if user is a changeur
@@ -187,7 +188,7 @@ pub async fn bulk_update_rates(
         .map(|u| (u.from_currency, u.to_currency, u.buy_rate, u.sell_rate))
         .collect();
 
-    let rates = rate_service.bulk_update_rates(user.id, rate_updates).await?;
+    let rates = state.rate_service.bulk_update_rates(user.id, rate_updates).await?;
     
     Ok((StatusCode::OK, Json(rates)))
 }
@@ -203,14 +204,14 @@ pub struct BulkRateUpdate {
 // GET /api/v1/rates/market-depth
 pub async fn get_market_depth(
     Query(params): Query<GetRatesQuery>,
-    State(rate_service): State<std::sync::Arc<RateService>>,
+    State(state): State<std::sync::Arc<AppState>>,
 ) -> AppResult<impl IntoResponse> {
     let (from, to) = match (params.from, params.to) {
         (Some(f), Some(t)) => (f, t),
         _ => return Err(AppError::validation("Both 'from' and 'to' currencies are required")),
     };
 
-    let depth = rate_service.get_market_depth(&from, &to).await?;
+    let depth = state.rate_service.get_market_depth(&from, &to).await?;
     
     Ok((StatusCode::OK, Json(depth)))
 }
@@ -218,14 +219,14 @@ pub async fn get_market_depth(
 // GET /api/v1/rates/aggregated
 pub async fn get_aggregated_rates(
     Query(params): Query<GetRatesQuery>,
-    State(rate_service): State<std::sync::Arc<RateService>>,
+    State(state): State<std::sync::Arc<AppState>>,
 ) -> AppResult<impl IntoResponse> {
     let (from, to) = match (params.from, params.to) {
         (Some(f), Some(t)) => (f, t),
         _ => return Err(AppError::validation("Both 'from' and 'to' currencies are required")),
     };
 
-    let aggregated = rate_service.get_aggregated_rates(&from, &to).await?;
+    let aggregated = state.rate_service.get_aggregated_rates(&from, &to).await?;
     
     Ok((StatusCode::OK, Json(aggregated)))
 }

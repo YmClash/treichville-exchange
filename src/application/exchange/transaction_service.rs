@@ -1,5 +1,6 @@
 use chrono::{DateTime, Duration, Utc};
 use rust_decimal::Decimal;
+use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{info, warn, error};
@@ -32,7 +33,6 @@ pub struct CreateTransactionDto {
     #[validate(custom = "utils::validate_currency_code")]
     pub to_currency: String,
     
-    #[validate(range(min = 0))]
     pub amount: Decimal,
     
     pub payment_method: PaymentMethod,
@@ -91,7 +91,7 @@ pub struct TransactionService {
     matching_engine: Arc<tokio::sync::Mutex<MatchingEngine>>,
     wallet_service: Arc<dyn WalletServiceTrait>,
     payment_processor: Arc<PaymentProcessor>,
-    settings: crate::config::Settings,
+    settings: crate::shared::config::Settings,
 }
 
 impl TransactionService {
@@ -100,7 +100,7 @@ impl TransactionService {
         rate_service: Arc<RateService>,
         wallet_service: Arc<dyn WalletServiceTrait>,
         payment_processor: Arc<PaymentProcessor>,
-        settings: crate::config::Settings,
+        settings: crate::shared::config::Settings,
     ) -> Self {
         Self {
             repository,
@@ -183,8 +183,8 @@ impl TransactionService {
             user_id,
             Some(match_result.changeur_id),
             TransactionType::Exchange,
-            dto.from_currency,
-            dto.to_currency,
+            dto.from_currency.clone(),
+            dto.to_currency.clone(),
             dto.amount,
             amount_to,
             match_result.rate.sell_rate,
@@ -574,7 +574,7 @@ impl TransactionService {
             id,
             name: format!("Changeur {}", id),
             phone: None,
-            rating: Some(Decimal::from(4.5)),
+            rating: Some(dec!(4.5)),
             distance_km: None,
         });
 

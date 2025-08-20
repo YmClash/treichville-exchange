@@ -4,8 +4,9 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 use validator::Validate;
+use std::fmt;
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
 #[sqlx(type_name = "user_role", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum UserRole {
@@ -13,6 +14,17 @@ pub enum UserRole {
     Changeur,
     Admin,
     SuperAdmin,
+}
+
+impl fmt::Display for UserRole {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            UserRole::Client => write!(f, "client"),
+            UserRole::Changeur => write!(f, "changeur"),
+            UserRole::Admin => write!(f, "admin"),
+            UserRole::SuperAdmin => write!(f, "super_admin"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]

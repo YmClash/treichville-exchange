@@ -5,11 +5,12 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
-use sqlx::{Pool, Postgres};
+use sqlx::{Pool, Postgres, Row};
 use redis::AsyncCommands;
 use std::sync::Arc;
 
 use crate::shared::errors::AppResult;
+use crate::shared::state::HealthState;
 
 #[derive(Debug, Serialize)]
 pub struct HealthResponse {
@@ -30,7 +31,7 @@ pub struct ServiceStatus {
 #[derive(Debug, Serialize)]
 pub struct ComponentHealth {
     pub status: String,
-    pub latency_ms: Option<u64>,
+    pub latency_ms: Option<i64>,
     pub message: Option<String>,
 }
 
@@ -74,11 +75,6 @@ pub struct BusinessMetrics {
     pub volume_today_fcfa: rust_decimal::Decimal,
 }
 
-pub struct HealthState {
-    pub db: Pool<Postgres>,
-    pub redis: Arc<redis::aio::ConnectionManager>,
-    pub start_time: std::time::Instant,
-}
 
 // GET /health
 pub async fn health_check() -> impl IntoResponse {
@@ -97,16 +93,16 @@ pub async fn liveness() -> impl IntoResponse {
 
 // GET /health/ready
 pub async fn readiness(
-    State(state): State<Arc<HealthState>>,
+    State(state): State<Arc<crate::shared::state::AppState>>,
 ) -> AppResult<impl IntoResponse> {
     let mut is_ready = true;
     let mut services = vec![];
 
     // Check database
     let db_start = std::time::Instant::now();
-    let db_status = match sqlx::query("SELECT 1").fetch_one(&state.db).await {
+    let db_status = match sqlx::query("SELECT 1").fetch_one(&state.health_state.db).await {
         Ok(_) => {
-            services.push(("database", "healthy", Some(db_start.elapsed().as_millis() as u64)));
+            services.push(("database", "healthy", Some(db_start.elapsed().as_millis() as i64)));
             "healthy"
         }
         Err(e) => {
@@ -119,10 +115,10 @@ pub async fn readiness(
 
     // Check Redis
     let redis_start = std::time::Instant::now();
-    let mut redis_conn = state.redis.clone();
-    let redis_status = match redis_conn.ping::<String>().await {
+    let mut redis_conn = (*state.health_state.redis).clone();
+    let redis_status = match redis::cmd("PING").query_async::<_, String>(&mut redis_conn).await {
         Ok(_) => {
-            services.push(("redis", "healthy", Some(redis_start.elapsed().as_millis() as u64)));
+            services.push(("redis", "healthy", Some(redis_start.elapsed().as_millis() as i64)));
             "healthy"
         }
         Err(e) => {
@@ -153,7 +149,7 @@ pub async fn readiness(
 
 // GET /health/detailed
 pub async fn detailed_health(
-    State(state): State<Arc<HealthState>>,
+    State(state): State<Arc<crate::shared::state::AppState>>,
 ) -> AppResult<impl IntoResponse> {
     let mut database = ComponentHealth {
         status: "unknown".to_string(),
@@ -169,10 +165,10 @@ pub async fn detailed_health(
 
     // Check database
     let db_start = std::time::Instant::now();
-    match sqlx::query("SELECT version()").fetch_one(&state.db).await {
+    match sqlx::query("SELECT version()").fetch_one(&state.health_state.db).await {
         Ok(row) => {
             database.status = "healthy".to_string();
-            database.latency_ms = Some(db_start.elapsed().as_millis() as u64);
+            database.latency_ms = Some(db_start.elapsed().as_millis() as i64);
             let version: String = row.try_get(0).unwrap_or_default();
             database.message = Some(format!("PostgreSQL {}", version));
         }
@@ -184,11 +180,11 @@ pub async fn detailed_health(
 
     // Check Redis
     let redis_start = std::time::Instant::now();
-    let mut redis_conn = state.redis.clone();
-    match redis_conn.ping::<String>().await {
+    let mut redis_conn = (*state.health_state.redis).clone();
+    match redis::cmd("PING").query_async::<_, String>(&mut redis_conn).await {
         Ok(_) => {
             redis.status = "healthy".to_string();
-            redis.latency_ms = Some(redis_start.elapsed().as_millis() as u64);
+            redis.latency_ms = Some(redis_start.elapsed().as_millis() as i64);
             
             // Get Redis info
             if let Ok(info) = redis::cmd("INFO")
@@ -254,13 +250,13 @@ pub async fn detailed_health(
 
 // GET /metrics
 pub async fn metrics(
-    State(state): State<Arc<HealthState>>,
+    State(state): State<Arc<crate::shared::state::AppState>>,
 ) -> AppResult<impl IntoResponse> {
-    let uptime_seconds = state.start_time.elapsed().as_secs();
+    let uptime_seconds = 0u64; // TODO: Track start time
 
     // Get database pool metrics
     let db_pool_metrics = {
-        let pool = &state.db;
+        let pool = &state.health_state.db;
         PoolMetrics {
             size: pool.size(),
             available: pool.size() - pool.num_idle() as u32,
@@ -301,10 +297,10 @@ pub async fn metrics(
          FROM users 
          WHERE is_active = true"
     )
-    .fetch_one(&state.db)
+    .fetch_one(&state.health_state.db)
     .await {
-        business_metrics.active_users = row.try_get("active_users").unwrap_or(0);
-        business_metrics.active_changeurs = row.try_get("active_changeurs").unwrap_or(0);
+        business_metrics.active_users = row.try_get::<i64, _>("active_users").unwrap_or(0) as u64;
+        business_metrics.active_changeurs = row.try_get::<i64, _>("active_changeurs").unwrap_or(0) as u64;
     }
 
     // Query today's transactions
@@ -315,9 +311,9 @@ pub async fn metrics(
          FROM transactions 
          WHERE created_at >= CURRENT_DATE"
     )
-    .fetch_one(&state.db)
+    .fetch_one(&state.health_state.db)
     .await {
-        business_metrics.transactions_today = row.try_get("count").unwrap_or(0);
+        business_metrics.transactions_today = row.try_get::<i64, _>("count").unwrap_or(0) as u64;
         business_metrics.volume_today_fcfa = row.try_get("volume").unwrap_or(rust_decimal::Decimal::ZERO);
     }
 

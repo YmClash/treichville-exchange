@@ -11,9 +11,9 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
-    application::auth::jwt::JwtService,
-    config::Settings,
-    domain::{RefreshToken, User, UserRole},
+    application::auth::{jwt::JwtService, dto::{UpdateProfileDto, ChangePasswordDto, Enable2FADto, Verify2FADto, RegisterDto, LoginDto}},
+    shared::config::Settings,
+    domain::{user::{RefreshToken, User, UserRole}},
     shared::{errors::AppError, utils},
 };
 
@@ -284,7 +284,7 @@ impl AuthService {
         // Blacklist access token in Redis until it expires
         let token_hash = self.hash_token(access_token);
         let key = format!("blacklist:{}", token_hash);
-        let ttl = self.settings.jwt.access_token_expiry as usize;
+        let ttl = self.settings.jwt.access_token_expiry as u64;
         
         let _: () = self.redis.clone()
             .set_ex(key, "1", ttl)
@@ -413,5 +413,188 @@ impl AuthService {
         // For now, just log to tracing
         tracing::info!(user_id = %user_id, action = action, "Auth event");
         Ok(())
+    }
+
+    // Additional methods required by the handlers
+    pub async fn get_user_details(&self, user_id: Uuid) -> Result<User, AppError> {
+        sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_one(&self.db)
+            .await
+            .map_err(|_| AppError::not_found("User"))
+    }
+    
+    pub async fn update_profile(&self, user_id: Uuid, dto: UpdateProfileDto) -> Result<User, AppError> {
+        // Build update query dynamically based on provided fields
+        let mut query = "UPDATE users SET updated_at = NOW()".to_string();
+        let mut params: Vec<String> = vec![];
+        
+        if dto.name.is_some() {
+            params.push("name = $2".to_string());
+        }
+        if dto.email.is_some() {
+            params.push("email = $3".to_string());
+        }
+        if dto.address.is_some() {
+            params.push("address = $4".to_string());
+        }
+        
+        if !params.is_empty() {
+            query.push_str(", ");
+            query.push_str(&params.join(", "));
+        }
+        
+        query.push_str(" WHERE id = $1 RETURNING *");
+        
+        // For now, simple implementation
+        sqlx::query_as::<_, User>(&query)
+            .bind(user_id)
+            .fetch_one(&self.db)
+            .await
+            .map_err(|e| AppError::Database(e))
+    }
+    
+    pub async fn change_password(&self, user_id: Uuid, dto: ChangePasswordDto) -> Result<(), AppError> {
+        // Get user
+        let user = self.get_user_details(user_id).await?;
+        
+        // Verify current password
+        self.verify_password(&dto.current_password, &user.password_hash)?;
+        
+        // Hash new password
+        let new_hash = self.hash_password(&dto.new_password)?;
+        
+        // Update password
+        sqlx::query("UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2")
+            .bind(new_hash)
+            .bind(user_id)
+            .execute(&self.db)
+            .await?;
+        
+        Ok(())
+    }
+    
+    pub async fn verify_email(&self, token: &str) -> Result<(), AppError> {
+        // TODO: Implement email verification with token
+        todo!("Implement verify_email")
+    }
+    
+    pub async fn initiate_password_reset(&self, email: &str) -> Result<(), AppError> {
+        // TODO: Generate reset token and send email
+        todo!("Implement initiate_password_reset")
+    }
+    
+    pub async fn reset_password(&self, token: String, new_password: String) -> Result<(), AppError> {
+        // TODO: Verify token and reset password
+        todo!("Implement reset_password")
+    }
+    
+    pub async fn enable_2fa(&self, user_id: Uuid, dto: Enable2FADto) -> Result<String, AppError> {
+        // TODO: Generate and store 2FA secret
+        todo!("Implement enable_2fa")
+    }
+    
+    pub async fn verify_2fa(&self, user_id: Uuid, dto: Verify2FADto) -> Result<(), AppError> {
+        // TODO: Verify 2FA code
+        todo!("Implement verify_2fa")
+    }
+    
+    pub async fn disable_2fa(&self, user_id: Uuid, password: String) -> Result<(), AppError> {
+        // TODO: Disable 2FA after password verification
+        todo!("Implement disable_2fa")
+    }
+    
+    pub async fn get_users(&self, page: Option<u32>, limit: Option<u32>, role: Option<String>, active: Option<bool>) -> Result<Vec<User>, AppError> {
+        let page = page.unwrap_or(1);
+        let limit = limit.unwrap_or(20);
+        let offset = (page - 1) * limit;
+        
+        let mut query = "SELECT * FROM users WHERE 1=1".to_string();
+        
+        if let Some(role) = role {
+            query.push_str(&format!(" AND role = '{}'", role));
+        }
+        
+        if let Some(active) = active {
+            query.push_str(&format!(" AND is_active = {}", active));
+        }
+        
+        query.push_str(&format!(" ORDER BY created_at DESC LIMIT {} OFFSET {}", limit, offset));
+        
+        sqlx::query_as::<_, User>(&query)
+            .fetch_all(&self.db)
+            .await
+            .map_err(|e| AppError::Database(e))
+    }
+    
+    pub async fn activate_user(&self, user_id: Uuid) -> Result<(), AppError> {
+        sqlx::query("UPDATE users SET is_active = true, updated_at = NOW() WHERE id = $1")
+            .bind(user_id)
+            .execute(&self.db)
+            .await?;
+        Ok(())
+    }
+    
+    pub async fn deactivate_user(&self, user_id: Uuid, reason: String) -> Result<(), AppError> {
+        sqlx::query("UPDATE users SET is_active = false, deactivation_reason = $1, updated_at = NOW() WHERE id = $2")
+            .bind(reason)
+            .bind(user_id)
+            .execute(&self.db)
+            .await?;
+        Ok(())
+    }
+    
+    pub async fn verify_changeur(&self, user_id: Uuid, verification_type: String, documents: Vec<String>) -> Result<(), AppError> {
+        // TODO: Implement changeur verification
+        sqlx::query("UPDATE users SET is_verified = true, verification_type = $1, verification_documents = $2, verified_at = NOW() WHERE id = $3")
+            .bind(verification_type)
+            .bind(serde_json::to_value(documents).unwrap())
+            .bind(user_id)
+            .execute(&self.db)
+            .await?;
+        Ok(())
+    }
+    
+    pub async fn get_active_sessions(&self, user_id: Uuid) -> Result<Vec<String>, AppError> {
+        // TODO: Implement session tracking
+        Ok(vec![])
+    }
+    
+    pub async fn revoke_session(&self, user_id: Uuid, session_id: String) -> Result<(), AppError> {
+        // TODO: Implement session revocation
+        Ok(())
+    }
+    
+    pub async fn revoke_all_sessions(&self, user_id: Uuid) -> Result<(), AppError> {
+        // TODO: Implement revoke all sessions
+        sqlx::query("DELETE FROM user_sessions WHERE user_id = $1")
+            .bind(user_id)
+
+            .execute(&self.db)
+            .await?;
+        Ok(())
+    }
+}
+
+// Implement conversions from DTOs to Requests
+impl From<RegisterDto> for RegisterRequest {
+    fn from(dto: RegisterDto) -> Self {
+        RegisterRequest {
+            phone: dto.phone,
+            name: dto.name,
+            email: dto.email,
+            password: dto.password,
+            role: Some(dto.role),
+        }
+    }
+}
+
+impl From<LoginDto> for LoginRequest {
+    fn from(dto: LoginDto) -> Self {
+        LoginRequest {
+            phone: dto.phone,
+            password: dto.password,
+            two_fa_code: dto.two_fa_code,
+        }
     }
 }

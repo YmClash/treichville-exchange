@@ -1,5 +1,7 @@
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
+use rust_decimal::MathematicalOps;
+use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -206,7 +208,7 @@ impl RateAggregator {
         let sell_std_dev = Self::calculate_std_deviation(&sell_rates);
 
         // Z-score method: outlier if |z| > 2.5
-        let z_threshold = Decimal::from(2.5);
+        let z_threshold = dec!(2.5);
 
         for rate in rates {
             if buy_std_dev > Decimal::ZERO {

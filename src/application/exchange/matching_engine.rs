@@ -1,5 +1,6 @@
 use chrono::{DateTime, Duration, Utc};
 use rust_decimal::Decimal;
+use rust_decimal::prelude::ToPrimitive;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::{info, warn, debug};
@@ -185,7 +186,7 @@ impl MatchingEngine {
 
         Ok(MatchResult {
             changeur_id: profile.user_id,
-            changeur_name: profile.business_name
+            changeur_name: profile.business_name.clone()
                 .unwrap_or_else(|| format!("Changeur #{}", profile.user_id)),
             rate: rate.clone(),
             score: score.total_score,

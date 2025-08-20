@@ -18,35 +18,36 @@ use crate::{
     shared::{
         errors::{AppError, AppResult},
         utils::PaginationParams,
+        state::AppState,
     },
 };
 
 // POST /api/v1/auth/register
 pub async fn register(
-    State(auth_service): State<std::sync::Arc<AuthService>>,
+    State(state): State<std::sync::Arc<AppState>>,
     Json(dto): Json<RegisterDto>,
 ) -> AppResult<impl IntoResponse> {
-    let response = auth_service.register(dto).await?;
+    let response = state.auth_service.register(dto.into()).await?;
     
     Ok((StatusCode::CREATED, Json(response)))
 }
 
 // POST /api/v1/auth/login
 pub async fn login(
-    State(auth_service): State<std::sync::Arc<AuthService>>,
+    State(state): State<std::sync::Arc<AppState>>,
     Json(dto): Json<LoginDto>,
 ) -> AppResult<impl IntoResponse> {
-    let response = auth_service.login(dto).await?;
+    let response = state.auth_service.login(dto.into()).await?;
     
     Ok((StatusCode::OK, Json(response)))
 }
 
 // POST /api/v1/auth/refresh
 pub async fn refresh_token(
-    State(auth_service): State<std::sync::Arc<AuthService>>,
+    State(state): State<std::sync::Arc<AppState>>,
     Json(dto): Json<RefreshTokenDto>,
 ) -> AppResult<impl IntoResponse> {
-    let response = auth_service.refresh_token(dto.refresh_token).await?;
+    let response = state.auth_service.refresh_token(&dto.refresh_token).await?;
     
     Ok((StatusCode::OK, Json(response)))
 }
@@ -54,9 +55,9 @@ pub async fn refresh_token(
 // POST /api/v1/auth/logout
 pub async fn logout(
     Extension(user): Extension<CurrentUser>,
-    State(auth_service): State<std::sync::Arc<AuthService>>,
+    State(state): State<std::sync::Arc<AppState>>,
 ) -> AppResult<impl IntoResponse> {
-    auth_service.logout(user.id).await?;
+    state.auth_service.logout(user.id, "").await?;
     
     Ok((StatusCode::OK, Json(serde_json::json!({
         "message": "Logged out successfully"
@@ -66,9 +67,9 @@ pub async fn logout(
 // GET /api/v1/auth/me
 pub async fn get_current_user(
     Extension(user): Extension<CurrentUser>,
-    State(auth_service): State<std::sync::Arc<AuthService>>,
+    State(state): State<std::sync::Arc<AppState>>,
 ) -> AppResult<impl IntoResponse> {
-    let user_details = auth_service.get_user_details(user.id).await?;
+    let user_details = state.auth_service.get_user_details(user.id).await?;
     
     Ok((StatusCode::OK, Json(user_details)))
 }
@@ -76,10 +77,10 @@ pub async fn get_current_user(
 // PUT /api/v1/auth/update-profile
 pub async fn update_profile(
     Extension(user): Extension<CurrentUser>,
-    State(auth_service): State<std::sync::Arc<AuthService>>,
+    State(state): State<std::sync::Arc<AppState>>,
     Json(dto): Json<UpdateProfileDto>,
 ) -> AppResult<impl IntoResponse> {
-    let updated_user = auth_service.update_profile(user.id, dto).await?;
+    let updated_user = state.auth_service.update_profile(user.id, dto).await?;
     
     Ok((StatusCode::OK, Json(updated_user)))
 }
@@ -87,10 +88,10 @@ pub async fn update_profile(
 // POST /api/v1/auth/change-password
 pub async fn change_password(
     Extension(user): Extension<CurrentUser>,
-    State(auth_service): State<std::sync::Arc<AuthService>>,
+    State(state): State<std::sync::Arc<AppState>>,
     Json(dto): Json<ChangePasswordDto>,
 ) -> AppResult<impl IntoResponse> {
-    auth_service.change_password(user.id, dto).await?;
+    state.auth_service.change_password(user.id, dto).await?;
     
     Ok((StatusCode::OK, Json(serde_json::json!({
         "message": "Password changed successfully"
@@ -100,9 +101,9 @@ pub async fn change_password(
 // GET /api/v1/auth/verify-email/:token
 pub async fn verify_email(
     Path(token): Path<String>,
-    State(auth_service): State<std::sync::Arc<AuthService>>,
+    State(state): State<std::sync::Arc<AppState>>,
 ) -> AppResult<impl IntoResponse> {
-    auth_service.verify_email(token).await?;
+    state.auth_service.verify_email(&token).await?;
     
     Ok((StatusCode::OK, Json(serde_json::json!({
         "message": "Email verified successfully"
@@ -111,10 +112,10 @@ pub async fn verify_email(
 
 // POST /api/v1/auth/forgot-password
 pub async fn forgot_password(
-    State(auth_service): State<std::sync::Arc<AuthService>>,
+    State(state): State<std::sync::Arc<AppState>>,
     Json(request): Json<ForgotPasswordRequest>,
 ) -> AppResult<impl IntoResponse> {
-    auth_service.initiate_password_reset(&request.email).await?;
+    state.auth_service.initiate_password_reset(&request.email).await?;
     
     Ok((StatusCode::OK, Json(serde_json::json!({
         "message": "Password reset instructions sent to your email"
@@ -123,10 +124,10 @@ pub async fn forgot_password(
 
 // POST /api/v1/auth/reset-password
 pub async fn reset_password(
-    State(auth_service): State<std::sync::Arc<AuthService>>,
+    State(state): State<std::sync::Arc<AppState>>,
     Json(request): Json<ResetPasswordRequest>,
 ) -> AppResult<impl IntoResponse> {
-    auth_service.reset_password(request.token, request.new_password).await?;
+    state.auth_service.reset_password(request.token, request.new_password).await?;
     
     Ok((StatusCode::OK, Json(serde_json::json!({
         "message": "Password reset successfully"
@@ -136,10 +137,10 @@ pub async fn reset_password(
 // POST /api/v1/auth/enable-2fa
 pub async fn enable_2fa(
     Extension(user): Extension<CurrentUser>,
-    State(auth_service): State<std::sync::Arc<AuthService>>,
+    State(state): State<std::sync::Arc<AppState>>,
     Json(dto): Json<Enable2FADto>,
 ) -> AppResult<impl IntoResponse> {
-    let response = auth_service.enable_2fa(user.id, dto).await?;
+    let response = state.auth_service.enable_2fa(user.id, dto).await?;
     
     Ok((StatusCode::OK, Json(response)))
 }
@@ -147,10 +148,10 @@ pub async fn enable_2fa(
 // POST /api/v1/auth/verify-2fa
 pub async fn verify_2fa(
     Extension(user): Extension<CurrentUser>,
-    State(auth_service): State<std::sync::Arc<AuthService>>,
+    State(state): State<std::sync::Arc<AppState>>,
     Json(dto): Json<Verify2FADto>,
 ) -> AppResult<impl IntoResponse> {
-    auth_service.verify_2fa(user.id, dto).await?;
+    state.auth_service.verify_2fa(user.id, dto).await?;
     
     Ok((StatusCode::OK, Json(serde_json::json!({
         "message": "2FA verified successfully"
@@ -160,10 +161,10 @@ pub async fn verify_2fa(
 // POST /api/v1/auth/disable-2fa
 pub async fn disable_2fa(
     Extension(user): Extension<CurrentUser>,
-    State(auth_service): State<std::sync::Arc<AuthService>>,
+    State(state): State<std::sync::Arc<AppState>>,
     Json(request): Json<Disable2FARequest>,
 ) -> AppResult<impl IntoResponse> {
-    auth_service.disable_2fa(user.id, request.password).await?;
+    state.auth_service.disable_2fa(user.id, request.password).await?;
     
     Ok((StatusCode::OK, Json(serde_json::json!({
         "message": "2FA disabled successfully"
@@ -175,18 +176,18 @@ pub async fn disable_2fa(
 pub async fn admin_get_users(
     Query(params): Query<GetUsersQuery>,
     Extension(admin): Extension<CurrentUser>,
-    State(auth_service): State<std::sync::Arc<AuthService>>,
+    State(state): State<std::sync::Arc<AppState>>,
 ) -> AppResult<impl IntoResponse> {
     if !admin.is_admin() {
         return Err(AppError::forbidden("Admin access required"));
     }
 
-    let users = auth_service
+    let users = state.auth_service
         .get_users(
-            params.role.as_deref(),
-            params.status.as_deref(),
-            params.page.unwrap_or(1),
-            params.per_page.unwrap_or(20),
+            Some(params.page.unwrap_or(1) as u32),
+            Some(params.per_page.unwrap_or(20) as u32),
+            params.role.clone(),
+            params.status.as_deref().map(|s| s == "active"),
         )
         .await?;
     
@@ -197,13 +198,13 @@ pub async fn admin_get_users(
 pub async fn admin_activate_user(
     Path(user_id): Path<Uuid>,
     Extension(admin): Extension<CurrentUser>,
-    State(auth_service): State<std::sync::Arc<AuthService>>,
+    State(state): State<std::sync::Arc<AppState>>,
 ) -> AppResult<impl IntoResponse> {
     if !admin.is_admin() {
         return Err(AppError::forbidden("Admin access required"));
     }
 
-    auth_service.activate_user(user_id).await?;
+    state.auth_service.activate_user(user_id).await?;
     
     Ok((StatusCode::OK, Json(serde_json::json!({
         "message": "User activated successfully"
@@ -214,14 +215,14 @@ pub async fn admin_activate_user(
 pub async fn admin_deactivate_user(
     Path(user_id): Path<Uuid>,
     Extension(admin): Extension<CurrentUser>,
-    State(auth_service): State<std::sync::Arc<AuthService>>,
+    State(state): State<std::sync::Arc<AppState>>,
     Json(request): Json<DeactivateUserRequest>,
 ) -> AppResult<impl IntoResponse> {
     if !admin.is_admin() {
         return Err(AppError::forbidden("Admin access required"));
     }
 
-    auth_service.deactivate_user(user_id, request.reason).await?;
+    state.auth_service.deactivate_user(user_id, request.reason).await?;
     
     Ok((StatusCode::OK, Json(serde_json::json!({
         "message": "User deactivated successfully"
@@ -231,18 +232,18 @@ pub async fn admin_deactivate_user(
 // POST /api/v1/admin/changeurs/verify
 pub async fn admin_verify_changeur(
     Extension(admin): Extension<CurrentUser>,
-    State(auth_service): State<std::sync::Arc<AuthService>>,
+    State(state): State<std::sync::Arc<AppState>>,
     Json(request): Json<VerifyChangeurRequest>,
 ) -> AppResult<impl IntoResponse> {
     if !admin.is_admin() {
         return Err(AppError::forbidden("Admin access required"));
     }
 
-    auth_service
+    state.auth_service
         .verify_changeur(
             request.changeur_id,
-            request.verified,
-            request.notes,
+            "manual".to_string(),
+            vec![request.notes.unwrap_or_default()],
         )
         .await?;
     
@@ -296,9 +297,9 @@ pub struct VerifyChangeurRequest {
 // GET /api/v1/auth/sessions
 pub async fn get_active_sessions(
     Extension(user): Extension<CurrentUser>,
-    State(auth_service): State<std::sync::Arc<AuthService>>,
+    State(state): State<std::sync::Arc<AppState>>,
 ) -> AppResult<impl IntoResponse> {
-    let sessions = auth_service.get_active_sessions(user.id).await?;
+    let sessions = state.auth_service.get_active_sessions(user.id).await?;
     
     Ok((StatusCode::OK, Json(sessions)))
 }
@@ -307,9 +308,9 @@ pub async fn get_active_sessions(
 pub async fn revoke_session(
     Path(session_id): Path<Uuid>,
     Extension(user): Extension<CurrentUser>,
-    State(auth_service): State<std::sync::Arc<AuthService>>,
+    State(state): State<std::sync::Arc<AppState>>,
 ) -> AppResult<impl IntoResponse> {
-    auth_service.revoke_session(user.id, session_id).await?;
+    state.auth_service.revoke_session(user.id, session_id.to_string()).await?;
     
     Ok((StatusCode::OK, Json(serde_json::json!({
         "message": "Session revoked successfully"
@@ -319,9 +320,9 @@ pub async fn revoke_session(
 // POST /api/v1/auth/sessions/revoke-all
 pub async fn revoke_all_sessions(
     Extension(user): Extension<CurrentUser>,
-    State(auth_service): State<std::sync::Arc<AuthService>>,
+    State(state): State<std::sync::Arc<AppState>>,
 ) -> AppResult<impl IntoResponse> {
-    auth_service.revoke_all_sessions(user.id).await?;
+    state.auth_service.revoke_all_sessions(user.id).await?;
     
     Ok((StatusCode::OK, Json(serde_json::json!({
         "message": "All sessions revoked successfully"

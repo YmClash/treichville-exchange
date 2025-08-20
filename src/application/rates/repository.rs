@@ -23,6 +23,8 @@ pub trait RateRepositoryTrait: Send + Sync {
     async fn get_public_rates(&self) -> Result<Vec<PublicRate>, AppError>;
     async fn get_best_rates(&self, from: &str, to: &str, amount: Decimal) -> Result<Vec<ExchangeRate>, AppError>;
     async fn record_rate_history(&self, rate: &ExchangeRate) -> Result<(), AppError>;
+    async fn detect_manipulation(&self, from: &str, to: &str, rate: Decimal) -> Result<bool, AppError>;
+    async fn get_rate_history(&self, from: &str, to: &str, start: DateTime<Utc>, end: DateTime<Utc>) -> Result<Vec<RateHistory>, AppError>;
 }
 
 pub struct RateRepository {
@@ -105,18 +107,18 @@ impl RateRepositoryTrait for RateRepository {
         .await?
         .ok_or_else(|| AppError::not_found("Rate"))?;
 
-        let mut query_parts = vec!["UPDATE exchange_rates SET updated_at = NOW()"];
+        let mut query_parts = vec!["UPDATE exchange_rates SET updated_at = NOW()".to_string()];
         let mut bindings = vec![];
         let mut bind_count = 1;
 
         if let Some(buy_rate) = dto.buy_rate {
-            query_parts.push(&format!("buy_rate = ${}", bind_count));
+            query_parts.push(format!("buy_rate = ${}", bind_count));
             bindings.push(buy_rate.to_string());
             bind_count += 1;
         }
 
         if let Some(sell_rate) = dto.sell_rate {
-            query_parts.push(&format!("sell_rate = ${}", bind_count));
+            query_parts.push(format!("sell_rate = ${}", bind_count));
             bindings.push(sell_rate.to_string());
             bind_count += 1;
         }
@@ -128,40 +130,40 @@ impl RateRepositoryTrait for RateRepository {
             let mid_rate = (buy + sell) / Decimal::from(2);
             let spread = sell - buy;
             
-            query_parts.push(&format!("mid_rate = ${}", bind_count));
+            query_parts.push(format!("mid_rate = ${}", bind_count));
             bindings.push(mid_rate.to_string());
             bind_count += 1;
             
-            query_parts.push(&format!("spread = ${}", bind_count));
+            query_parts.push(format!("spread = ${}", bind_count));
             bindings.push(spread.to_string());
             bind_count += 1;
         }
 
         if let Some(available_amount) = dto.available_amount {
-            query_parts.push(&format!("available_amount = ${}", bind_count));
+            query_parts.push(format!("available_amount = ${}", bind_count));
             bindings.push(available_amount.to_string());
             bind_count += 1;
         }
 
         if let Some(min_amount) = dto.min_amount {
-            query_parts.push(&format!("min_amount = ${}", bind_count));
+            query_parts.push(format!("min_amount = ${}", bind_count));
             bindings.push(min_amount.to_string());
             bind_count += 1;
         }
 
         if let Some(max_amount) = dto.max_amount {
-            query_parts.push(&format!("max_amount = ${}", bind_count));
+            query_parts.push(format!("max_amount = ${}", bind_count));
             bindings.push(max_amount.to_string());
             bind_count += 1;
         }
 
         if let Some(is_active) = dto.is_active {
-            query_parts.push(&format!("is_active = ${}", bind_count));
+            query_parts.push(format!("is_active = ${}", bind_count));
             bindings.push(is_active.to_string());
             bind_count += 1;
         }
 
-        query_parts.push(&format!("WHERE id = ${} AND changeur_id = ${}", bind_count, bind_count + 1));
+        query_parts.push(format!("WHERE id = ${} AND changeur_id = ${}", bind_count, bind_count + 1));
         bindings.push(id.to_string());
         bindings.push(changeur_id.to_string());
 
@@ -321,6 +323,51 @@ impl RateRepositoryTrait for RateRepository {
         .await?;
 
         Ok(())
+    }
+
+    async fn detect_manipulation(&self, from: &str, to: &str, rate: Decimal) -> Result<bool, AppError> {
+        use rust_decimal::prelude::FromPrimitive;
+        
+        // Get average rate for this pair
+        let avg_rate: Option<Decimal> = sqlx::query_scalar(
+            "SELECT AVG(buy_rate) FROM exchange_rates 
+             WHERE from_currency = $1 AND to_currency = $2 AND is_active = true"
+        )
+        .bind(from)
+        .bind(to)
+        .fetch_optional(&self.db)
+        .await?;
+        
+        if let Some(avg) = avg_rate {
+            // Check if rate deviates more than 20% from average
+            let deviation = ((rate - avg) / avg).abs();
+            let threshold = Decimal::from_f64(0.2).unwrap_or(Decimal::from(0));
+            Ok(deviation > threshold)
+        } else {
+            // No data to compare, consider it valid
+            Ok(false)
+        }
+    }
+
+    async fn get_rate_history(&self, from: &str, to: &str, start: DateTime<Utc>, end: DateTime<Utc>) -> Result<Vec<RateHistory>, AppError> {
+        let history = sqlx::query_as::<_, RateHistory>(
+            r#"
+            SELECT changeur_id, buy_rate, sell_rate, mid_rate, recorded_at
+            FROM exchange_rates_history
+            WHERE from_currency = $1 
+            AND to_currency = $2
+            AND recorded_at BETWEEN $3 AND $4
+            ORDER BY recorded_at DESC
+            "#
+        )
+        .bind(from)
+        .bind(to)
+        .bind(start)
+        .bind(end)
+        .fetch_all(&self.db)
+        .await?;
+        
+        Ok(history)
     }
 }
 

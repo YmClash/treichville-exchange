@@ -11,10 +11,15 @@ axum = { version = "0.7", features = ["ws", "macros", "json", "query", "multipar
 axum-extra = { version = "0.9", features = ["typed-header"] }
 tokio = { version = "1", features = ["full"] }
 tower = { version = "0.4", features = ["timeout", "limit", "load-shed"] }
-tower-http = { version = "0.5", features = ["cors", "trace", "compression-gzip", "request-id", "sensitive-headers"] }
+tower-http = { version = "0.5", features = ["cors", "trace", "compression-gzip", "request-id", "sensitive-headers", "limit"] }
+lazy_static = "1.4"
+prometheus = { version = "0.13", features = ["process"] }
+
+
+
 
 # Database
-sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "rust_decimal", "migrate"] }
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "rust_decimal", "migrate","macros"] }
 redis = { version = "0.24", features = ["tokio-comp", "connection-manager", "ahash"] }
 
 # Serialization
@@ -24,11 +29,11 @@ serde_with = "3.4"
 
 # Auth & Security
 jsonwebtoken = "9"
-argon2 = "0.5"
+argon2 = "0.4"
 uuid = { version = "1.6", features = ["v4", "serde", "fast-rng"] }
 rand = "0.8"
 sha2 = "0.10"
-base64 = "0.21"
+base64 = "0.13"
 
 # Validation
 validator = { version = "0.16", features = ["derive"] }
@@ -39,7 +44,7 @@ once_cell = "1.19"
 reqwest = { version = "0.11", features = ["json", "rustls-tls", "gzip", "trust-dns"] }
 
 # WebSocket
-tokio-tungstenite = "0.21"
+tokio-tungstenite = "0.24"
 futures-util = "0.3"
 futures = "0.3"
 
@@ -73,15 +78,19 @@ nonzero_ext = "0.3"
 # Async traits
 async-trait = "0.1"
 
-# Testing
-mockall = "0.12"
-wiremock = "0.5"
+
+
+
 
 [dev-dependencies]
 criterion = "0.5"
 proptest = "1.4"
 fake = "2.9"
 rstest = "0.18"
+mockall = "0.12"
+wiremock = "0.5"
+futures = "0.3"
+pretty_assertions = "1.4"
 
 [profile.release]
 opt-level = 3

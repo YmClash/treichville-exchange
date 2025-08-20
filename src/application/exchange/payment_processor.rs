@@ -11,7 +11,7 @@ use crate::{
     shared::errors::AppError,
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum PaymentProvider {
     OrangeMoney,
     Wave,

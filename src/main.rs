@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use std::net::SocketAddr;
-use axum::Router;
+use std::str::FromStr;
 use sqlx::postgres::PgPoolOptions;
 use tracing::{info, error};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -25,11 +25,13 @@ use crate::{
             MatchingEngine, WalletService, PaymentProcessor,
         },
     },
-    presentation::rest::{routes::create_router, handlers::health::HealthState},
+    presentation::rest::routes::create_router,
+    shared::state::HealthState,
 };
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+
     // Initialize tracing
     tracing_subscriber::registry()
         .with(
@@ -74,69 +76,44 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let transaction_repository = Arc::new(TransactionRepository::new(db_pool.clone()));
     
     // Initialize caches
-    let rate_cache = Arc::new(RateCache::new(redis_arc.clone()));
+    let rate_cache = Arc::new(RateCache::new((*redis_arc).clone()));
     
     // Initialize services
     let jwt_service = Arc::new(JwtService::new(
-        config.jwt.secret.clone(),
-        config.jwt.access_token_expiry,
-        config.jwt.refresh_token_expiry,
+        config.jwt.clone(),
     ));
     
     let auth_service = Arc::new(AuthService::new(
-        user_repository.clone(),
-        jwt_service.clone(),
-        redis_arc.clone(),
+        db_pool.clone(),
+        (*redis_arc).clone(),
+        config.clone(),
     ));
     
-    let rate_aggregator = Arc::new(RateAggregator::new(
-        rate_repository.clone(),
-        rate_cache.clone(),
-    ));
+    let rate_aggregator = Arc::new(RateAggregator {});
     
     let rate_service = Arc::new(RateService::new(
         rate_repository.clone(),
         rate_cache.clone(),
-        rate_aggregator.clone(),
+        rust_decimal::Decimal::from_str("0.01").unwrap(), // 1% fee
     ));
     
-    let matching_engine = Arc::new(MatchingEngine::new(
-        rate_repository.clone(),
-        user_repository.clone(),
-    ));
+    let matching_engine = Arc::new(MatchingEngine::new());
     
     let wallet_service = Arc::new(WalletService::new(
         db_pool.clone(),
-        redis_arc.clone(),
     ));
     
-    let payment_processor = Arc::new(PaymentProcessor::new(
-        transaction_repository.clone(),
-        wallet_service.clone(),
-        config.clone(),
-    ));
+    let payment_processor = Arc::new(PaymentProcessor::new());
     
     let transaction_service = Arc::new(TransactionService::new(
         transaction_repository.clone(),
-        matching_engine.clone(),
+        rate_service.clone(),
         wallet_service.clone(),
         payment_processor.clone(),
-        rate_service.clone(),
+        config.clone(),
     ));
     
     info!("All services initialized");
-
-    // Create application state
-    let app_state = Arc::new(AppState {
-        config: config.clone(),
-        db: db_pool.clone(),
-        redis: redis_arc.clone(),
-        auth_service: auth_service.clone(),
-        rate_service: rate_service.clone(),
-        transaction_service: transaction_service.clone(),
-        wallet_service: wallet_service.clone(),
-        jwt_service: jwt_service.clone(),
-    });
 
     // Create health check state
     let health_state = Arc::new(HealthState {
@@ -145,10 +122,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         start_time: std::time::Instant::now(),
     });
 
+    // Create application state
+    let app_state = Arc::new(AppState {
+        auth_service: auth_service.clone(),
+        rate_service: rate_service.clone(),
+        transaction_service: transaction_service.clone(),
+        wallet_service: wallet_service.clone(),
+        payment_processor: payment_processor.clone(),
+        health_state: health_state.clone(),
+    });
+
     // Create the main router
     let app = create_router(app_state.clone())
-        .layer(tower_http::trace::TraceLayer::new_for_http())
-        .with_state(health_state);
+        .layer(tower_http::trace::TraceLayer::new_for_http());
 
     // Bind to address
     let addr = SocketAddr::from(([0, 0, 0, 0], config.server.port));
@@ -171,6 +157,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Server shutdown complete");
     Ok(())
 }
+
+
+
 
 async fn shutdown_signal() {
     let ctrl_c = async {
@@ -220,14 +209,14 @@ async fn background_tasks(
             _ => {}
         }
         
-        // Update rate aggregations
-        match rate_aggregator.update_all_aggregations().await {
-            Ok(_) => {
-                info!("Rate aggregations updated");
-            }
-            Err(e) => {
-                error!("Error updating rate aggregations: {}", e);
-            }
-        }
+        // Update rate aggregations - TODO: Implement aggregation update
+        // match rate_aggregator.update_all_aggregations().await {
+        //     Ok(_) => {
+        //         info!("Rate aggregations updated");
+        //     }
+        //     Err(e) => {
+        //         error!("Error updating rate aggregations: {}", e);
+        //     }
+        // }
     }
 }

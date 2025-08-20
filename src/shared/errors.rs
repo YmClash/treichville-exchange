@@ -77,7 +77,7 @@ pub enum AppError {
     Jwt(#[from] jsonwebtoken::errors::Error),
 
     #[error("Argon2 error: {0}")]
-    Argon2(#[from] argon2::password_hash::Error),
+    Argon2(String),
 
     #[error("Configuration error: {0}")]
     Configuration(String),
@@ -123,6 +123,12 @@ pub enum ErrorType {
     DuplicateError,
     ServiceError,
     InternalError,
+}
+
+impl From<argon2::password_hash::Error> for AppError {
+    fn from(err: argon2::password_hash::Error) -> Self {
+        AppError::Argon2(err.to_string())
+    }
 }
 
 impl IntoResponse for AppError {

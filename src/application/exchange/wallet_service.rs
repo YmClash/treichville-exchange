@@ -538,3 +538,163 @@ impl WalletServiceTrait for WalletService {
         Ok(())
     }
 }
+
+// Additional public methods for WalletService
+impl WalletService {
+    pub async fn get_balance(&self, user_id: Uuid) -> Result<crate::domain::wallet::WalletBalance, AppError> {
+        // Get default currency balance (XOF)
+        self.get_balance_by_currency(user_id, "XOF").await
+    }
+    
+    pub async fn get_balance_by_currency(&self, user_id: Uuid, currency: &str) -> Result<crate::domain::wallet::WalletBalance, AppError> {
+        let wallet = self.get_wallet(user_id, currency).await?
+            .ok_or_else(|| AppError::not_found("Wallet"))?;
+        
+        Ok(crate::domain::wallet::WalletBalance {
+            total: wallet.balance,
+            available: wallet.balance - wallet.reserved_balance,
+            reserved: wallet.reserved_balance,
+            currency: wallet.currency,
+        })
+    }
+    
+    pub async fn process_operation(&self, operation: crate::domain::wallet::WalletOperation) -> Result<crate::domain::wallet::WalletTransaction, AppError> {
+        // This would process different wallet operations
+        todo!("Implement process_operation")
+    }
+    
+    pub async fn transfer(&self, request: crate::domain::wallet::TransferRequest) -> Result<crate::domain::wallet::WalletTransaction, AppError> {
+        // Use the existing transfer method but return a transaction object
+        let reference = format!("TRANSFER-{}", Uuid::new_v4());
+        
+        // TODO: Implement proper transaction return
+        todo!("Implement transfer with TransferRequest")
+    }
+    
+    pub async fn get_transactions(&self, user_id: Uuid, from: Option<DateTime<Utc>>, to: Option<DateTime<Utc>>, limit: Option<i64>, offset: Option<i64>) -> Result<Vec<crate::domain::wallet::WalletTransaction>, AppError> {
+        let limit = limit.unwrap_or(50);
+        let offset = offset.unwrap_or(0);
+        
+        let mut query = String::from("SELECT * FROM wallet_transactions WHERE wallet_id IN (SELECT id FROM wallets WHERE user_id = $1)");
+        
+        if let Some(from_date) = from {
+            query.push_str(&format!(" AND created_at >= '{}'", from_date));
+        }
+        
+        if let Some(to_date) = to {
+            query.push_str(&format!(" AND created_at <= '{}'", to_date));
+        }
+        
+        query.push_str(&format!(" ORDER BY created_at DESC LIMIT {} OFFSET {}", limit, offset));
+        
+        let transactions = sqlx::query_as::<_, crate::domain::wallet::WalletTransaction>(&query)
+            .bind(user_id)
+            .fetch_all(&self.db)
+            .await?;
+        
+        Ok(transactions)
+    }
+    
+    pub async fn get_statistics(&self, user_id: Uuid, from: Option<DateTime<Utc>>, to: Option<DateTime<Utc>>) -> Result<crate::domain::wallet::WalletStatistics, AppError> {
+        // Calculate wallet statistics
+        let mut query = String::from(
+            "SELECT 
+                COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0) as total_in,
+                COALESCE(SUM(CASE WHEN amount < 0 THEN ABS(amount) ELSE 0 END), 0) as total_out,
+                COUNT(*) as transaction_count
+            FROM wallet_transactions 
+            WHERE wallet_id IN (SELECT id FROM wallets WHERE user_id = $1)"
+        );
+        
+        if let Some(from_date) = from {
+            query.push_str(&format!(" AND created_at >= '{}'", from_date));
+        }
+        
+        if let Some(to_date) = to {
+            query.push_str(&format!(" AND created_at <= '{}'", to_date));
+        }
+        
+        #[derive(sqlx::FromRow)]
+        struct StatsRow {
+            total_in: Decimal,
+            total_out: Decimal,
+            transaction_count: i64,
+        }
+        
+        let stats = sqlx::query_as::<_, StatsRow>(&query)
+            .bind(user_id)
+            .fetch_one(&self.db)
+            .await?;
+        
+        Ok(crate::domain::wallet::WalletStatistics {
+            total_in: stats.total_in,
+            total_out: stats.total_out,
+            transaction_count: stats.transaction_count,
+        })
+    }
+    
+    pub async fn reconcile_wallet(&self, user_id: Uuid, currency: &str) -> Result<crate::domain::wallet::ReconciliationResult, AppError> {
+        // Reconcile wallet balance with transaction history
+        let wallet = self.get_wallet(user_id, currency).await?
+            .ok_or_else(|| AppError::not_found("Wallet"))?;
+        
+        // Calculate expected balance from transactions
+        let sum_query = "
+            SELECT COALESCE(SUM(amount), 0) as total
+            FROM wallet_transactions
+            WHERE wallet_id = $1
+        ";
+        
+        let expected: Decimal = sqlx::query_scalar(sum_query)
+            .bind(wallet.id)
+            .fetch_one(&self.db)
+            .await?;
+        
+        let actual = wallet.balance;
+        let discrepancy = actual - expected;
+        
+        Ok(crate::domain::wallet::ReconciliationResult {
+            expected_balance: expected,
+            actual_balance: actual,
+            discrepancy,
+        })
+    }
+    
+    pub async fn get_limits(&self, user_id: Uuid) -> Result<crate::domain::wallet::WalletLimits, AppError> {
+        // TODO: Fetch from user settings or configuration
+        Ok(crate::domain::wallet::WalletLimits {
+            daily_limit: Decimal::from(1000000),
+            monthly_limit: Decimal::from(10000000),
+            single_transaction_limit: Decimal::from(500000),
+        })
+    }
+    
+    pub async fn get_pending_operations(&self, user_id: Uuid) -> Result<Vec<crate::domain::wallet::WalletOperation>, AppError> {
+        // TODO: Implement fetching pending operations
+        Ok(vec![])
+    }
+    
+    pub async fn validate_operation(&self, user_id: Uuid, operation_type: &str, amount: Decimal, currency: &str) -> Result<crate::domain::wallet::ValidationResult, AppError> {
+        let mut errors = Vec::new();
+        
+        if amount <= Decimal::ZERO {
+            errors.push("Amount must be positive".to_string());
+        }
+        
+        let wallet = self.get_wallet(user_id, currency).await?;
+        
+        if let Some(wallet) = wallet {
+            let available = wallet.balance - wallet.reserved_balance;
+            if operation_type == "withdrawal" && available < amount {
+                errors.push("Insufficient funds".to_string());
+            }
+        } else {
+            errors.push("Wallet not found".to_string());
+        }
+        
+        Ok(crate::domain::wallet::ValidationResult {
+            is_valid: errors.is_empty(),
+            errors,
+        })
+    }
+}

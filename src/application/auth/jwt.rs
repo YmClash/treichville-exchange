@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    config::JwtConfig,
-    domain::{User, UserRole},
+    shared::config::JwtConfig,
+    domain::user::{User, UserRole},
     shared::errors::AppError,
 };
 

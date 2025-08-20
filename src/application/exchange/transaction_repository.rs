@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Duration, Utc, Datelike};
 use rust_decimal::Decimal;
 use sqlx::{Pool, Postgres, Row};
 use uuid::Uuid;
@@ -449,7 +449,7 @@ impl TransactionRepository {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TransactionStatistics {
     pub total_transactions: i64,
     pub unique_clients: i64,

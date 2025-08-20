@@ -1,11 +1,11 @@
-mod matching_engine;
-mod transaction_service;
-mod payment_processor;
-mod wallet_service;
-mod transaction_repository;
+pub mod matching_engine;
+pub mod transaction_service;
+pub mod payment_processor;
+pub mod wallet_service;
+pub mod transaction_repository;
 
-pub use matching_engine::{MatchingEngine, MatchResult, MatchingCriteria};
-pub use transaction_service::{TransactionService, CreateTransactionDto, ConfirmPaymentDto};
-pub use payment_processor::{PaymentProcessor, PaymentProvider, PaymentStatus};
-pub use wallet_service::{WalletService, WalletBalance};
-pub use transaction_repository::TransactionRepository;
+pub use matching_engine::{MatchingEngine, MatchResult, MatchingCriteria, UrgencyLevel};
+pub use transaction_service::{TransactionService, TransactionResponse, CreateTransactionDto, ConfirmPaymentDto};
+pub use payment_processor::{PaymentProcessor, PaymentProvider, PaymentStatus, PaymentWebhook, PaymentRequest};
+pub use wallet_service::{WalletService, WalletServiceTrait, WalletBalance};
+pub use transaction_repository::{TransactionRepository, TransactionRepositoryTrait, DatePeriod};

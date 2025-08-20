@@ -104,7 +104,6 @@ impl RateService {
         // Validate the rate is not manipulated
         let is_manipulated = self.repository
             .detect_manipulation(
-                changeur_id,
                 &dto.from_currency,
                 &dto.to_currency,
                 dto.sell_rate,

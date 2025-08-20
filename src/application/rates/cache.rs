@@ -40,6 +40,8 @@ pub trait RateCacheTrait: Send + Sync {
     async fn invalidate_changeur_rates(&self, changeur_id: Uuid) -> Result<(), AppError>;
     async fn invalidate_pair_rates(&self, from: &str, to: &str) -> Result<(), AppError>;
     async fn invalidate_all(&self) -> Result<(), AppError>;
+    async fn get_best_rates(&self, from: &str, to: &str, amount: Decimal) -> Result<Option<Vec<ExchangeRate>>, AppError>;
+    async fn set_best_rates(&self, from: &str, to: &str, amount: Decimal, rates: Vec<ExchangeRate>) -> Result<(), AppError>;
 }
 
 pub struct RateCache {
@@ -94,7 +96,7 @@ impl RateCacheTrait for RateCache {
         let serialized = serde_json::to_string(&cached)?;
         
         let _: () = self.redis.clone()
-            .set_ex(PUBLIC_RATES_KEY, serialized, RATE_CACHE_TTL as usize)
+            .set_ex(PUBLIC_RATES_KEY, serialized, RATE_CACHE_TTL as u64)
             .await
             .map_err(|e| AppError::service_unavailable(format!("Redis error: {}", e)))?;
 
@@ -122,7 +124,7 @@ impl RateCacheTrait for RateCache {
         let serialized = serde_json::to_string(&rates)?;
         
         let _: () = self.redis.clone()
-            .set_ex(key, serialized, RATE_CACHE_TTL as usize)
+            .set_ex(key, serialized, RATE_CACHE_TTL as u64)
             .await
             .map_err(|e| AppError::service_unavailable(format!("Redis error: {}", e)))?;
 
@@ -150,7 +152,7 @@ impl RateCacheTrait for RateCache {
         let serialized = serde_json::to_string(&rates)?;
         
         let _: () = self.redis.clone()
-            .set_ex(key, serialized, RATE_CACHE_TTL as usize)
+            .set_ex(key, serialized, RATE_CACHE_TTL as u64)
             .await
             .map_err(|e| AppError::service_unavailable(format!("Redis error: {}", e)))?;
 
@@ -166,7 +168,10 @@ impl RateCacheTrait for RateCache {
             .map_err(|e| AppError::service_unavailable(format!("Redis error: {}", e)))?;
 
         // Also invalidate public rates as they might have changed
-        self.invalidate_public_rates().await?;
+        let _: () = self.redis.clone()
+            .del(PUBLIC_RATES_KEY)
+            .await
+            .map_err(|e| AppError::service_unavailable(format!("Redis error: {}", e)))?;
 
         Ok(())
     }
@@ -208,12 +213,34 @@ impl RateCacheTrait for RateCache {
         Ok(())
     }
 
-    async fn invalidate_public_rates(&self) -> Result<(), AppError> {
-        let _: () = self.redis.clone()
-            .del(PUBLIC_RATES_KEY)
+    async fn get_best_rates(&self, from: &str, to: &str, amount: Decimal) -> Result<Option<Vec<ExchangeRate>>, AppError> {
+        let key = format!("{}{}:{}:{}", BEST_RATES_PREFIX, from, to, amount);
+        
+        let result: Option<String> = self.redis.clone()
+            .get(&key)
             .await
             .map_err(|e| AppError::service_unavailable(format!("Redis error: {}", e)))?;
-
+        
+        match result {
+            Some(data) => {
+                let rates = serde_json::from_str(&data)
+                    .map_err(|e| AppError::service_unavailable(format!("Deserialization error: {}", e)))?;
+                Ok(Some(rates))
+            },
+            None => Ok(None)
+        }
+    }
+    
+    async fn set_best_rates(&self, from: &str, to: &str, amount: Decimal, rates: Vec<ExchangeRate>) -> Result<(), AppError> {
+        let key = format!("{}{}:{}:{}", BEST_RATES_PREFIX, from, to, amount);
+        let serialized = serde_json::to_string(&rates)
+            .map_err(|e| AppError::service_unavailable(format!("Serialization error: {}", e)))?;
+        
+        let _: () = self.redis.clone()
+            .set_ex(&key, serialized, RATE_CACHE_TTL as u64)
+            .await
+            .map_err(|e| AppError::service_unavailable(format!("Redis error: {}", e)))?;
+        
         Ok(())
     }
 }
@@ -252,7 +279,7 @@ impl RateCache {
         let serialized = serde_json::to_string(&rates)?;
         
         let _: () = self.redis.clone()
-            .set_ex(key, serialized, RATE_CACHE_TTL as usize)
+            .set_ex(key, serialized, RATE_CACHE_TTL as u64)
             .await
             .map_err(|e| AppError::service_unavailable(format!("Redis error: {}", e)))?;
 

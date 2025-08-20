@@ -12,8 +12,8 @@ use uuid::Uuid;
 
 use crate::{
     application::auth::jwt::{JwtClaims, JwtService},
-    config::Settings,
-    domain::{User, UserRole},
+    shared::config::Settings,
+    domain::user::{User, UserRole},
     shared::errors::AppError,
 };
 
