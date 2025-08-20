@@ -1,14 +1,14 @@
-version: '3.9'
+
 
 services:
   postgres:
-    image: timescale/timescaledb-ha:pg16-latest
+    image: postgres:16-alpine
     container_name: treichville_postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: treichville_exchange
       POSTGRES_USER: treichville_user
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeThisPassword123!}
+      POSTGRES_PASSWORD: password
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     ports:
       - "5432:5432"
@@ -24,7 +24,6 @@ services:
       - treichville_network
     command: >
       postgres
-      -c shared_preload_libraries='timescaledb'
       -c max_connections=200
       -c shared_buffers=256MB
       -c effective_cache_size=1GB
