@@ -129,6 +129,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         transaction_service: transaction_service.clone(),
         wallet_service: wallet_service.clone(),
         payment_processor: payment_processor.clone(),
+        jwt_service: jwt_service.clone(),
         health_state: health_state.clone(),
     });
 

@@ -27,7 +27,7 @@ pub async fn register(
     State(state): State<std::sync::Arc<AppState>>,
     Json(dto): Json<RegisterDto>,
 ) -> AppResult<impl IntoResponse> {
-    let response = state.auth_service.register(dto.into()).await?;
+    let response = state.auth_service.register(dto).await?;
     
     Ok((StatusCode::CREATED, Json(response)))
 }
@@ -37,7 +37,7 @@ pub async fn login(
     State(state): State<std::sync::Arc<AppState>>,
     Json(dto): Json<LoginDto>,
 ) -> AppResult<impl IntoResponse> {
-    let response = state.auth_service.login(dto.into()).await?;
+    let response = state.auth_service.login(dto).await?;
     
     Ok((StatusCode::OK, Json(response)))
 }

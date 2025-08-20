@@ -8,6 +8,7 @@ pub struct AppState {
     pub transaction_service: Arc<crate::application::exchange::TransactionService>,
     pub wallet_service: Arc<crate::application::exchange::WalletService>,
     pub payment_processor: Arc<crate::application::exchange::PaymentProcessor>,
+    pub jwt_service: Arc<crate::application::auth::jwt::JwtService>,
     pub health_state: Arc<HealthState>,
 }
 

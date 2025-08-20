@@ -13,10 +13,10 @@ pub struct RegisterDto {
     pub email: Option<String>,
     #[validate(length(min = 6))]
     pub password: String,
-    pub role: UserRole,
+    pub role: Option<UserRole>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Validate)]
 pub struct LoginDto {
     pub phone: String,
     pub password: String,
@@ -54,53 +54,4 @@ pub struct Verify2FADto {
     pub code: String,
 }
 
-// Types de réponse
-#[derive(Debug, Serialize)]
-pub struct RegisterRequest {
-    pub phone: String,
-    pub name: String,
-    pub email: Option<String>,
-    pub password: String,
-    pub role: UserRole,
-}
 
-#[derive(Debug, Serialize)]
-pub struct LoginRequest {
-    pub phone: String,
-    pub password: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct LoginResponse {
-    pub user: User,
-    pub access_token: String,
-    pub refresh_token: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct TokenPair {
-    pub access_token: String,
-    pub refresh_token: String,
-}
-
-// Conversion des DTOs
-impl From<RegisterDto> for RegisterRequest {
-    fn from(dto: RegisterDto) -> Self {
-        RegisterRequest {
-            phone: dto.phone,
-            name: dto.name,
-            email: dto.email,
-            password: dto.password,
-            role: dto.role,
-        }
-    }
-}
-
-impl From<LoginDto> for LoginRequest {
-    fn from(dto: LoginDto) -> Self {
-        LoginRequest {
-            phone: dto.phone,
-            password: dto.password,
-        }
-    }
-}

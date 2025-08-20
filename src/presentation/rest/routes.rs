@@ -88,6 +88,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/v1/wallet/limits", get(wallet::get_wallet_limits))
         .route("/api/v1/wallet/pending-operations", get(wallet::get_pending_operations))
         .route("/api/v1/wallet/validate-operation", post(wallet::validate_operation))
+        .layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
         .with_state(state.clone());
 
     // Admin routes
@@ -106,6 +107,39 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .merge(protected_routes)
         .merge(admin_routes)
         .with_state(state)
+}
+
+// Middleware to authenticate user
+async fn auth_middleware(
+    axum::extract::State(state): axum::extract::State<Arc<AppState>>,
+    mut req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Result<axum::response::Response, axum::http::StatusCode> {
+    use crate::application::auth::middleware::CurrentUser;
+    use crate::domain::user::UserRole;
+    
+    // Extract authorization header
+    let auth_header = req.headers()
+        .get("authorization")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|h| h.strip_prefix("Bearer "))
+        .ok_or(axum::http::StatusCode::UNAUTHORIZED)?;
+    
+    // Verify token - use access token, not refresh token
+    let claims = state.jwt_service.verify_access_token(auth_header)
+        .map_err(|_| axum::http::StatusCode::UNAUTHORIZED)?;
+    
+    // Create CurrentUser from claims
+    let current_user = CurrentUser {
+        id: claims.user_id().map_err(|_| axum::http::StatusCode::UNAUTHORIZED)?,
+        phone: claims.phone.clone(),
+        role: claims.role.clone(),
+    };
+    
+    // Add user to request extensions
+    req.extensions_mut().insert(current_user);
+    
+    Ok(next.run(req).await)
 }
 
 // Middleware to require admin role

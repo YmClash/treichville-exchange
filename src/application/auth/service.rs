@@ -107,9 +107,17 @@ impl AuthService {
         }
     }
 
-    pub async fn register(&self, request: RegisterRequest) -> Result<LoginResponse, AppError> {
-        request.validate()
+    pub async fn register(&self, dto: RegisterDto) -> Result<LoginResponse, AppError> {
+        dto.validate()
             .map_err(|e| AppError::validation(e.to_string()))?;
+        
+        let request = RegisterRequest {
+            phone: dto.phone.clone(),
+            name: dto.name.clone(),
+            email: dto.email.clone(),
+            password: dto.password.clone(),
+            role: dto.role,
+        };
 
         // Check if user already exists
         let existing = sqlx::query_as::<_, User>(
@@ -169,9 +177,15 @@ impl AuthService {
         })
     }
 
-    pub async fn login(&self, request: LoginRequest) -> Result<LoginResponse, AppError> {
-        request.validate()
+    pub async fn login(&self, dto: LoginDto) -> Result<LoginResponse, AppError> {
+        dto.validate()
             .map_err(|e| AppError::validation(e.to_string()))?;
+        
+        let request = LoginRequest {
+            phone: dto.phone.clone(),
+            password: dto.password.clone(),
+            two_fa_code: dto.two_fa_code,
+        };
 
         // Find user
         let mut user = sqlx::query_as::<_, User>(
@@ -584,7 +598,7 @@ impl From<RegisterDto> for RegisterRequest {
             name: dto.name,
             email: dto.email,
             password: dto.password,
-            role: Some(dto.role),
+            role: dto.role,
         }
     }
 }

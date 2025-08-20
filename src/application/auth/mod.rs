@@ -1,5 +1,5 @@
 mod service;
-mod jwt;
+pub mod jwt;
 pub mod middleware;
 mod dto;
 mod repository;
