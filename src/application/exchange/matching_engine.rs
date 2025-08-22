@@ -100,6 +100,9 @@ impl MatchingEngine {
         available_rates: Vec<ExchangeRate>,
         changeur_profiles: Vec<ChangeurProfile>,
     ) -> Result<MatchResult, AppError> {
+        info!("find_best_match: {} rates available, {} profiles available", 
+              available_rates.len(), changeur_profiles.len());
+        
         if available_rates.is_empty() {
             return Err(AppError::not_found("No changeurs available for this currency pair"));
         }
@@ -110,16 +113,22 @@ impl MatchingEngine {
             .map(|p| (p.user_id, p))
             .collect();
 
+        info!("Profile map created with {} entries", profile_map.len());
+
         // Score each changeur
         let mut scores = vec![];
         for rate in &available_rates {
+            debug!("Checking rate for changeur_id: {}", rate.changeur_id);
             if let Some(profile) = profile_map.get(&rate.changeur_id) {
+                info!("Found profile for changeur: {}", rate.changeur_id);
                 let score = self.calculate_changeur_score(
                     rate,
                     profile,
                     criteria,
                 )?;
                 scores.push((rate.clone(), profile.clone(), score));
+            } else {
+                warn!("No profile found for changeur_id: {}", rate.changeur_id);
             }
         }
 
@@ -150,7 +159,10 @@ impl MatchingEngine {
         };
 
         let (rate, profile, score) = selected
-            .ok_or_else(|| AppError::not_found("No suitable changeur found"))?;
+            .ok_or_else(|| {
+                warn!("No suitable changeur found. Scores count: {}", scores.len());
+                AppError::not_found("No suitable changeur found")
+            })?;
 
         // Check availability
         let availability = self.check_changeur_availability(

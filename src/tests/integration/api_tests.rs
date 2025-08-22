@@ -332,10 +332,11 @@ async fn create_test_app() -> axum::Router {
     ));
     let transaction_service = std::sync::Arc::new(crate::application::exchange::TransactionService::new(
         transaction_repo.clone(),
-        matching_engine.clone(),
+        user_repo.clone(),
+        rate_service.clone(),
         wallet_service.clone(),
         payment_processor.clone(),
-        rate_service.clone(),
+        config.clone(),
     ));
     
     let app_state = std::sync::Arc::new(AppState {

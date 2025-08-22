@@ -42,6 +42,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     info!("Starting Treichville Exchange Backend...");
+    
+    // Initialize validators
+    shared::utils::init_validators();
+    info!("Validators initialized");
 
     // Load configuration
     let config = Config::from_env()?;
@@ -63,12 +67,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     info!("Database migrations completed");
 
-    // Connect to Redis
-    let redis_client = redis::Client::open(config.redis.url.clone())?;
-    let redis_conn = redis::aio::ConnectionManager::new(redis_client).await?;
+    // Connect to Redis with connection pool
+    let redis_pool = Arc::new(
+        infrastructure::redis_pool::RedisPool::new(config.redis.url.clone())
+            .await
+            .expect("Failed to create Redis pool")
+    );
+    
+    // Get initial connection for services that need ConnectionManager
+    let redis_conn = redis_pool.get_connection().await?;
     let redis_arc = Arc::new(redis_conn);
     
-    info!("Connected to Redis");
+    info!("Connected to Redis with connection pool");
 
     // Initialize repositories
     let user_repository = Arc::new(UserRepository::new(db_pool.clone()));
@@ -107,6 +117,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     let transaction_service = Arc::new(TransactionService::new(
         transaction_repository.clone(),
+        user_repository.clone(),
         rate_service.clone(),
         wallet_service.clone(),
         payment_processor.clone(),

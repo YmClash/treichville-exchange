@@ -131,14 +131,20 @@ impl UserRepositoryTrait for UserRepository {
     }
 
     async fn get_changeur_profile(&self, user_id: Uuid) -> Result<Option<ChangeurProfile>, AppError> {
-        let profile = sqlx::query_as::<_, ChangeurProfile>(
+        let row = sqlx::query(
             "SELECT * FROM changeur_profiles WHERE user_id = $1"
         )
         .bind(user_id)
         .fetch_optional(&self.db)
         .await?;
 
-        Ok(profile)
+        match row {
+            Some(row) => {
+                let profile = build_changeur_profile_from_row(&row)?;
+                Ok(Some(profile))
+            },
+            None => Ok(None)
+        }
     }
 
     async fn update_changeur_profile(&self, profile: &ChangeurProfile) -> Result<ChangeurProfile, AppError> {
@@ -171,4 +177,32 @@ impl UserRepositoryTrait for UserRepository {
 
         Ok(updated_profile)
     }
+}
+
+// Helper function to build ChangeurProfile from database row
+fn build_changeur_profile_from_row(row: &sqlx::postgres::PgRow) -> Result<ChangeurProfile, sqlx::Error> {
+    use rust_decimal::Decimal;
+    use chrono::{DateTime, Utc};
+    
+    Ok(ChangeurProfile {
+        id: row.try_get("id")?,
+        user_id: row.try_get("user_id")?,
+        business_name: row.try_get("business_name")?,
+        business_address: row.try_get("business_address")?,
+        business_phone: row.try_get("business_phone")?,
+        license_number: row.try_get("license_number")?,
+        rating: row.try_get("rating")?,
+        total_transactions: row.try_get("total_transactions")?,
+        total_volume: row.try_get("total_volume")?,
+        commission_rate: row.try_get("commission_rate")?,
+        available_currencies: row.try_get("available_currencies").unwrap_or_else(|_| vec![]),
+        operating_hours: row.try_get("operating_hours")?,
+        location_latitude: row.try_get("location_latitude")?,
+        location_longitude: row.try_get("location_longitude")?,
+        is_verified: row.try_get("is_verified")?,
+        verified_at: row.try_get("verified_at")?,
+        metadata: row.try_get("metadata")?,
+        created_at: row.try_get("created_at")?,
+        updated_at: row.try_get("updated_at")?,
+    })
 }

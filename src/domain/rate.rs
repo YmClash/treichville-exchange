@@ -20,8 +20,8 @@ pub struct ExchangeRate {
     pub max_amount: Decimal,
     pub is_active: bool,
     pub last_update_source: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
 }
 
 impl ExchangeRate {
@@ -49,8 +49,8 @@ impl ExchangeRate {
             max_amount: Decimal::from(10000000),
             is_active: true,
             last_update_source: Some("manual".to_string()),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
+            created_at: Some(Utc::now()),
+            updated_at: Some(Utc::now()),
         }
     }
 
@@ -58,7 +58,7 @@ impl ExchangeRate {
         if is_buying {
             amount * self.buy_rate
         } else {
-            amount / self.sell_rate
+            amount * self.sell_rate  // Selling: multiply amount by sell rate
         }
     }
 
@@ -193,7 +193,7 @@ pub struct PublicRate {
     pub average_sell_rate: Decimal,
     pub spread: Decimal,
     pub changeurs_count: i64,
-    pub last_updated: DateTime<Utc>,
+    pub last_updated: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -225,23 +225,35 @@ impl TransactionRepositoryTrait for TransactionRepository {
         let current = self.find_by_id(id).await?
             .ok_or_else(|| AppError::not_found("Transaction"))?;
 
-        let timestamp_field = match status {
-            TransactionStatus::Paid => "paid_at",
-            TransactionStatus::Confirmed => "confirmed_at",
-            TransactionStatus::Completed => "completed_at",
-            TransactionStatus::Cancelled | TransactionStatus::Failed => "cancelled_at",
-            _ => "updated_at",
+        let (timestamp_field, needs_updated_at) = match status {
+            TransactionStatus::Paid => ("paid_at", true),
+            TransactionStatus::Confirmed => ("confirmed_at", true),
+            TransactionStatus::Completed => ("completed_at", true),
+            TransactionStatus::Cancelled | TransactionStatus::Failed => ("cancelled_at", true),
+            _ => ("updated_at", false),
         };
 
-        let query = format!(
-            r#"
-            UPDATE transactions 
-            SET status = $1, {} = NOW(), updated_at = NOW()
-            WHERE id = $2
-            RETURNING *
-            "#,
-            timestamp_field
-        );
+        let query = if needs_updated_at {
+            format!(
+                r#"
+                UPDATE transactions 
+                SET status = $1, {} = NOW(), updated_at = NOW()
+                WHERE id = $2
+                RETURNING *
+                "#,
+                timestamp_field
+            )
+        } else {
+            format!(
+                r#"
+                UPDATE transactions 
+                SET status = $1, {} = NOW()
+                WHERE id = $2
+                RETURNING *
+                "#,
+                timestamp_field
+            )
+        };
 
         let updated = sqlx::query_as::<_, Transaction>(&query)
             .bind(&status)

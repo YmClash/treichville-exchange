@@ -9,6 +9,7 @@ use validator::Validate;
 
 use crate::{
     application::{
+        auth::{UserRepository, UserRepositoryTrait},
         exchange::{
             matching_engine::{MatchingEngine, MatchingCriteria, UrgencyLevel, MatchResult},
             payment_processor::{PaymentProcessor, PaymentRequest, PaymentProvider, PaymentStatus},
@@ -87,6 +88,7 @@ pub struct ChangeurInfo {
 
 pub struct TransactionService {
     repository: Arc<dyn TransactionRepositoryTrait>,
+    user_repository: Arc<dyn UserRepositoryTrait>,
     rate_service: Arc<RateService>,
     matching_engine: Arc<tokio::sync::Mutex<MatchingEngine>>,
     wallet_service: Arc<dyn WalletServiceTrait>,
@@ -97,6 +99,7 @@ pub struct TransactionService {
 impl TransactionService {
     pub fn new(
         repository: Arc<dyn TransactionRepositoryTrait>,
+        user_repository: Arc<dyn UserRepositoryTrait>,
         rate_service: Arc<RateService>,
         wallet_service: Arc<dyn WalletServiceTrait>,
         payment_processor: Arc<PaymentProcessor>,
@@ -104,6 +107,7 @@ impl TransactionService {
     ) -> Self {
         Self {
             repository,
+            user_repository,
             rate_service,
             matching_engine: Arc::new(tokio::sync::Mutex::new(MatchingEngine::new())),
             wallet_service,
@@ -164,8 +168,13 @@ impl TransactionService {
             .get_rates_by_pair(&dto.from_currency, &dto.to_currency)
             .await?;
 
-        // TODO: Get changeur profiles from database
-        let changeur_profiles = vec![];
+        // Get changeur profiles for each rate
+        let mut changeur_profiles = vec![];
+        for rate in &available_rates {
+            if let Some(profile) = self.user_repository.get_changeur_profile(rate.changeur_id).await? {
+                changeur_profiles.push(profile);
+            }
+        }
 
         let match_result = {
             let matching_engine = self.matching_engine.lock().await;
@@ -211,12 +220,28 @@ impl TransactionService {
 
         // For changeurs with wallets, reserve funds
         if dto.payment_method != PaymentMethod::Cash {
-            self.wallet_service.reserve(
+            info!(
+                "Reserving funds for electronic payment: changeur_id={}, currency={}, amount={}",
+                match_result.changeur_id, dto.to_currency, amount_to
+            );
+            
+            match self.wallet_service.reserve(
                 match_result.changeur_id,
                 &dto.to_currency,
                 amount_to,
                 &saved_transaction.reference,
-            ).await?;
+            ).await {
+                Ok(wallet) => {
+                    info!("Funds reserved successfully: available={}, reserved={}", 
+                          wallet.balance, wallet.reserved_balance);
+                }
+                Err(e) => {
+                    error!("Failed to reserve funds: {}", e);
+                    return Err(e);
+                }
+            }
+        } else {
+            info!("Cash payment, no wallet reservation needed");
         }
 
         info!(
@@ -335,8 +360,8 @@ impl TransactionService {
             return Err(AppError::forbidden("Not authorized to complete this transaction"));
         }
 
-        // Check status
-        if transaction.status != TransactionStatus::Confirmed {
+        // Check status - Accept both Paid and Confirmed status
+        if transaction.status != TransactionStatus::Paid && transaction.status != TransactionStatus::Confirmed {
             return Err(AppError::bad_request(
                 format!("Transaction cannot be completed in status: {:?}", transaction.status)
             ));

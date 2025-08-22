@@ -69,10 +69,14 @@ impl RateCache {
 #[async_trait]
 impl RateCacheTrait for RateCache {
     async fn get_public_rates(&self) -> Result<Option<Vec<PublicRate>>, AppError> {
-        let cached: Option<String> = self.redis.clone()
+        let mut conn = self.redis.clone();
+        let cached: Option<String> = conn
             .get(PUBLIC_RATES_KEY)
             .await
-            .map_err(|e| AppError::service_unavailable(format!("Redis error: {}", e)))?;
+            .map_err(|e| {
+                tracing::warn!("Redis get error: {}", e);
+                AppError::service_unavailable(format!("Redis error: {}", e))
+            })?;
 
         if let Some(data) = cached {
             let cached_rates: CachedPublicRates = serde_json::from_str(&data)?;
@@ -95,10 +99,14 @@ impl RateCacheTrait for RateCache {
 
         let serialized = serde_json::to_string(&cached)?;
         
-        let _: () = self.redis.clone()
+        let mut conn = self.redis.clone();
+        let _: () = conn
             .set_ex(PUBLIC_RATES_KEY, serialized, RATE_CACHE_TTL as u64)
             .await
-            .map_err(|e| AppError::service_unavailable(format!("Redis error: {}", e)))?;
+            .map_err(|e| {
+                tracing::warn!("Redis set error: {}", e);
+                AppError::service_unavailable(format!("Redis error: {}", e))
+            })?;
 
         Ok(())
     }

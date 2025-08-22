@@ -150,7 +150,7 @@ impl RateAggregator {
         // Check for stale rates
         let now = Utc::now();
         let stale_count = rates.iter()
-            .filter(|r| (now - r.updated_at).num_hours() > 1)
+            .filter(|r| r.updated_at.map_or(true, |updated| (now - updated).num_hours() > 1))
             .count();
         
         if stale_count > rates.len() / 2 {
