@@ -9,13 +9,14 @@ description = "High-performance digital exchange platform for West Africa"
 # Web Framework
 axum = { version = "0.7", features = ["ws", "macros", "json", "query", "multipart"] }
 axum-extra = { version = "0.9", features = ["typed-header"] }
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["full","tracing"] }
 tower = { version = "0.4", features = ["timeout", "limit", "load-shed"] }
 tower-http = { version = "0.5", features = ["cors", "trace", "compression-gzip", "request-id", "sensitive-headers", "limit"] }
 lazy_static = "1.4"
 prometheus = { version = "0.13", features = ["process"] }
 
-
+# Tokio console (for debugging)
+console-subscriber = "0.1.5"
 
 
 # Database
@@ -91,6 +92,8 @@ mockall = "0.12"
 wiremock = "0.5"
 futures = "0.3"
 pretty_assertions = "1.4"
+
+
 
 [profile.release]
 opt-level = 3

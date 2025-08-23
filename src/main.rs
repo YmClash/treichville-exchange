@@ -34,6 +34,7 @@ use crate::{
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // console_subscriber::init();
 
     // Initialize tracing
     tracing_subscriber::registry()
@@ -41,6 +42,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| "treichville_exchange=debug,tower_http=debug,axum=debug".into()),
         )
+        .with(console_subscriber::spawn())
         .with(tracing_subscriber::fmt::layer())
         .init();
 
