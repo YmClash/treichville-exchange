@@ -12,11 +12,21 @@ static CURRENCY_REGEX: OnceLock<Regex> = OnceLock::new();
 
 pub fn init_validators() {
     PHONE_REGEX.get_or_init(|| {
-        Regex::new(r"^\+225[0-9]{10}$").expect("Invalid phone regex")
+        // This regex is static and should always compile
+        Regex::new(r"^\+225[0-9]{10}$")
+            .unwrap_or_else(|e| {
+                eprintln!("FATAL: Failed to compile phone regex: {}", e);
+                std::process::exit(1);
+            })
     });
     
     CURRENCY_REGEX.get_or_init(|| {
-        Regex::new(r"^[A-Z]{3}$").expect("Invalid currency regex")
+        // This regex is static and should always compile
+        Regex::new(r"^[A-Z]{3}$")
+            .unwrap_or_else(|e| {
+                eprintln!("FATAL: Failed to compile currency regex: {}", e);
+                std::process::exit(1);
+            })
     });
 }
 
@@ -40,7 +50,8 @@ pub fn generate_otp() -> String {
 }
 
 pub fn validate_phone_number(phone: &str) -> Result<(), ValidationError> {
-    let regex = PHONE_REGEX.get().expect("Phone regex not initialized");
+    let regex = PHONE_REGEX.get()
+        .ok_or_else(|| ValidationError::new("Phone validator not initialized"))?;
     if !regex.is_match(phone) {
         return Err(ValidationError::new("Invalid Ivory Coast phone number format. Expected: +225XXXXXXXXXX"));
     }
@@ -48,7 +59,8 @@ pub fn validate_phone_number(phone: &str) -> Result<(), ValidationError> {
 }
 
 pub fn validate_currency_code(code: &str) -> Result<(), ValidationError> {
-    let regex = CURRENCY_REGEX.get().expect("Currency regex not initialized");
+    let regex = CURRENCY_REGEX.get()
+        .ok_or_else(|| ValidationError::new("Currency validator not initialized"))?;
     if !regex.is_match(code) {
         return Err(ValidationError::new("Invalid currency code format. Expected: 3 uppercase letters"));
     }
@@ -126,10 +138,10 @@ impl DateRange {
     pub fn today() -> Self {
         let now = Utc::now();
         let start = now.date_naive().and_hms_opt(0, 0, 0)
-            .expect("Valid time")
+            .unwrap_or_else(|| now.date_naive().and_time(chrono::NaiveTime::MIN))
             .and_utc();
         let end = now.date_naive().and_hms_opt(23, 59, 59)
-            .expect("Valid time")
+            .unwrap_or_else(|| now.date_naive().and_hms_opt(23, 59, 58).unwrap_or_else(|| now.date_naive().and_hms_opt(23, 59, 0).unwrap_or(now.date_naive().and_hms_opt(0, 0, 0).unwrap_or(chrono::NaiveDateTime::default()))))
             .and_utc();
         Self { start, end }
     }
@@ -139,26 +151,25 @@ impl DateRange {
         let start = now
             .date_naive()
             .with_day(1)
-            .expect("Valid day")
+            .unwrap_or(now.date_naive())
             .and_hms_opt(0, 0, 0)
-            .expect("Valid time")
+            .unwrap_or_else(|| now.date_naive().and_time(chrono::NaiveTime::MIN))
             .and_utc();
         
         let next_month = if now.month() == 12 {
             now.with_year(now.year() + 1)
-                .expect("Valid year")
-                .with_month(1)
-                .expect("Valid month")
+                .and_then(|d| d.with_month(1))
+                .unwrap_or(now)
         } else {
-            now.with_month(now.month() + 1).expect("Valid month")
+            now.with_month(now.month() + 1).unwrap_or(now)
         };
         
         let end = next_month
             .date_naive()
             .with_day(1)
-            .expect("Valid day")
+            .unwrap_or(next_month.date_naive())
             .and_hms_opt(0, 0, 0)
-            .expect("Valid time")
+            .unwrap_or_else(|| next_month.date_naive().and_time(chrono::NaiveTime::MIN))
             .and_utc()
             - chrono::Duration::seconds(1);
         

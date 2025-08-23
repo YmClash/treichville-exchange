@@ -12,6 +12,8 @@ use crate::{
     shared::errors::AppError,
 };
 
+use super::atomic_operations::{AtomicWalletService, AtomicTransferResult};
+
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Wallet {
     pub id: Uuid,
@@ -66,11 +68,13 @@ pub trait WalletServiceTrait: Send + Sync {
 
 pub struct WalletService {
     db: Pool<Postgres>,
+    atomic_service: AtomicWalletService,
 }
 
 impl WalletService {
     pub fn new(db: Pool<Postgres>) -> Self {
-        Self { db }
+        let atomic_service = AtomicWalletService::new(db.clone());
+        Self { db, atomic_service }
     }
 
     async fn get_wallet(&self, user_id: Uuid, currency: &str) -> Result<Option<Wallet>, AppError> {
@@ -344,53 +348,28 @@ impl WalletServiceTrait for WalletService {
             return Err(AppError::validation("Amount must be positive"));
         }
 
-        let wallet = self.get_wallet(user_id, currency).await?
-            .ok_or_else(|| AppError::not_found("Wallet"))?;
-
-        let available = wallet.balance - wallet.reserved_balance;
-        if available < amount {
-            warn!(
-                user_id = %user_id,
-                currency = currency,
-                requested = %amount,
-                available = %available,
-                "Insufficient funds for reservation"
-            );
-            return Err(AppError::InsufficientFunds);
-        }
-
-        let mut tx = self.db.begin().await?;
-
-        let updated_wallet = self.update_balance(
-            &mut tx,
-            wallet.id,
-            Decimal::ZERO,
-            amount,
-            None,
-        ).await?;
-
-        self.log_transaction(
-            &mut tx,
-            wallet.id,
-            WalletTransactionType::Reserve,
-            amount,
-            wallet.balance,
-            wallet.balance, // Balance doesn't change, only reserved increases
-            reference,
-            Some(format!("Reserved {} {} for {}", amount, currency, reference)),
-        ).await?;
-
-        tx.commit().await?;
+        // Get or create wallet first
+        let wallet = self.get_or_create_wallet(user_id, currency).await?;
+        
+        // Use atomic reservation to prevent race conditions
+        let expires_at = Utc::now() + chrono::Duration::minutes(15);
+        let result = self.atomic_service
+            .reserve_funds_atomic(wallet.id, amount, currency, reference, expires_at)
+            .await?;
 
         info!(
             user_id = %user_id,
             currency = currency,
             amount = %amount,
             reference = reference,
-            "Funds reserved"
+            available_after = %result.available_after,
+            reserved_after = %result.reserved_after,
+            "Funds reserved atomically"
         );
 
-        Ok(updated_wallet)
+        // Return updated wallet
+        self.get_wallet(user_id, currency).await?
+            .ok_or_else(|| AppError::not_found("Wallet"))
     }
 
     async fn release(
@@ -407,49 +386,23 @@ impl WalletServiceTrait for WalletService {
         let wallet = self.get_wallet(user_id, currency).await?
             .ok_or_else(|| AppError::not_found("Wallet"))?;
 
-        if wallet.reserved_balance < amount {
-            warn!(
-                user_id = %user_id,
-                currency = currency,
-                requested = %amount,
-                reserved = %wallet.reserved_balance,
-                "Cannot release more than reserved"
-            );
-            return Err(AppError::bad_request("Cannot release more than reserved amount"));
-        }
-
-        let mut tx = self.db.begin().await?;
-
-        let updated_wallet = self.update_balance(
-            &mut tx,
-            wallet.id,
-            Decimal::ZERO,
-            -amount,
-            None,
-        ).await?;
-
-        self.log_transaction(
-            &mut tx,
-            wallet.id,
-            WalletTransactionType::Release,
-            amount,
-            wallet.balance,
-            wallet.balance, // Balance doesn't change, only reserved decreases
-            reference,
-            Some(format!("Released {} {} for {}", amount, currency, reference)),
-        ).await?;
-
-        tx.commit().await?;
+        // Use atomic release to prevent race conditions
+        let available_after = self.atomic_service
+            .release_funds_atomic(wallet.id, amount, None, reference)
+            .await?;
 
         info!(
             user_id = %user_id,
             currency = currency,
             amount = %amount,
             reference = reference,
-            "Funds released"
+            available_after = %available_after,
+            "Funds released atomically"
         );
 
-        Ok(updated_wallet)
+        // Return updated wallet
+        self.get_wallet(user_id, currency).await?
+            .ok_or_else(|| AppError::not_found("Wallet"))
     }
 
     async fn transfer(
@@ -468,63 +421,22 @@ impl WalletServiceTrait for WalletService {
             return Err(AppError::validation("Cannot transfer to same user"));
         }
 
-        // Start transaction
-        let mut tx = self.db.begin().await?;
-
-        // Get source wallet
-        let from_wallet = self.get_wallet(from_user_id, currency).await?
-            .ok_or_else(|| AppError::not_found("Source wallet"))?;
-
-        let available = from_wallet.balance - from_wallet.reserved_balance;
-        if available < amount {
-            return Err(AppError::InsufficientFunds);
-        }
-
-        // Get or create destination wallet
+        // Ensure both wallets exist
+        let from_wallet = self.get_or_create_wallet(from_user_id, currency).await?;
         let to_wallet = self.get_or_create_wallet(to_user_id, currency).await?;
 
-        // Debit source
-        self.update_balance(
-            &mut tx,
-            from_wallet.id,
-            -amount,
-            Decimal::ZERO,
-            None,
-        ).await?;
-
-        // Credit destination
-        self.update_balance(
-            &mut tx,
-            to_wallet.id,
-            amount,
-            Decimal::ZERO,
-            None,
-        ).await?;
-
-        // Log both transactions
-        self.log_transaction(
-            &mut tx,
-            from_wallet.id,
-            WalletTransactionType::Debit,
-            amount,
-            from_wallet.balance,
-            from_wallet.balance - amount,
-            reference,
-            Some(format!("Transfer to user {}", to_user_id)),
-        ).await?;
-
-        self.log_transaction(
-            &mut tx,
-            to_wallet.id,
-            WalletTransactionType::Credit,
-            amount,
-            to_wallet.balance,
-            to_wallet.balance + amount,
-            reference,
-            Some(format!("Transfer from user {}", from_user_id)),
-        ).await?;
-
-        tx.commit().await?;
+        // Use atomic transfer to prevent any possibility of money loss
+        let transaction_id = Uuid::new_v4();
+        let result = self.atomic_service
+            .transfer_atomic(
+                from_wallet.id,
+                to_wallet.id,
+                amount,
+                currency,
+                transaction_id,
+                reference,
+            )
+            .await?;
 
         info!(
             from_user_id = %from_user_id,
@@ -532,7 +444,9 @@ impl WalletServiceTrait for WalletService {
             currency = currency,
             amount = %amount,
             reference = reference,
-            "Transfer completed"
+            from_balance_after = %result.from_balance_after,
+            to_balance_after = %result.to_balance_after,
+            "Transfer completed atomically"
         );
 
         Ok(())

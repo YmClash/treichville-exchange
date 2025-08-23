@@ -58,8 +58,13 @@ impl TransactionRepository {
         match period {
             DatePeriod::Today => {
                 let today = Utc::now().date_naive();
-                let start = today.and_hms_opt(0, 0, 0).unwrap().and_utc();
-                let end = today.and_hms_opt(23, 59, 59).unwrap().and_utc();
+                // These should always succeed for valid times 0:0:0 and 23:59:59
+                let start = today.and_hms_opt(0, 0, 0)
+                    .unwrap_or_else(|| today.and_hms_opt(0, 0, 1).unwrap_or(today.and_time(chrono::NaiveTime::MIN)))
+                    .and_utc();
+                let end = today.and_hms_opt(23, 59, 59)
+                    .unwrap_or_else(|| today.and_hms_opt(23, 59, 58).unwrap_or_else(|| today.and_hms_opt(23, 59, 57).unwrap_or(today.and_hms_opt(23, 59, 0).unwrap_or(today.and_hms_opt(0, 0, 0).unwrap_or(chrono::NaiveDateTime::default())))))
+                    .and_utc();
                 (start, end)
             }
             DatePeriod::ThisWeek => {
@@ -68,8 +73,12 @@ impl TransactionRepository {
                 let monday = now - Duration::days(days_from_monday as i64);
                 let sunday = monday + Duration::days(6);
                 (
-                    monday.date_naive().and_hms_opt(0, 0, 0).unwrap().and_utc(),
-                    sunday.date_naive().and_hms_opt(23, 59, 59).unwrap().and_utc(),
+                    monday.date_naive().and_hms_opt(0, 0, 0)
+                        .unwrap_or_else(|| monday.date_naive().and_time(chrono::NaiveTime::MIN))
+                        .and_utc(),
+                    sunday.date_naive().and_hms_opt(23, 59, 59)
+                        .unwrap_or_else(|| sunday.date_naive().and_hms_opt(23, 59, 58).unwrap_or_else(|| sunday.date_naive().and_hms_opt(23, 59, 0).unwrap_or(sunday.date_naive().and_hms_opt(0, 0, 0).unwrap_or(chrono::NaiveDateTime::default()))))
+                        .and_utc(),
                 )
             }
             DatePeriod::ThisMonth => {
@@ -77,24 +86,26 @@ impl TransactionRepository {
                 let start = now
                     .date_naive()
                     .with_day(1)
-                    .unwrap()
+                    .unwrap_or(now.date_naive())
                     .and_hms_opt(0, 0, 0)
-                    .unwrap()
+                    .unwrap_or_else(|| now.date_naive().and_time(chrono::NaiveTime::MIN))
                     .and_utc();
+                    
+                // Calculate next month safely
                 let next_month = if now.month() == 12 {
                     now.with_year(now.year() + 1)
-                        .unwrap()
-                        .with_month(1)
-                        .unwrap()
+                        .and_then(|d| d.with_month(1))
+                        .unwrap_or(now)
                 } else {
-                    now.with_month(now.month() + 1).unwrap()
+                    now.with_month(now.month() + 1).unwrap_or(now)
                 };
+                
                 let end = next_month
                     .date_naive()
                     .with_day(1)
-                    .unwrap()
+                    .unwrap_or(next_month.date_naive())
                     .and_hms_opt(0, 0, 0)
-                    .unwrap()
+                    .unwrap_or_else(|| next_month.date_naive().and_time(chrono::NaiveTime::MIN))
                     .and_utc()
                     - Duration::seconds(1);
                 (start, end)

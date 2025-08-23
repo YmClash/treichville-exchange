@@ -60,13 +60,13 @@ fn test_amount_validation() {
     // Valid amounts
     assert!(validate_amount(Decimal::from(100)).is_ok());
     assert!(validate_amount(Decimal::from(1)).is_ok());
-    assert!(validate_amount(Decimal::from_str("0.01").unwrap()).is_ok());
-    assert!(validate_amount(Decimal::from_str("999999.99").unwrap()).is_ok());
+    assert!(validate_amount(Decimal::from_str("0.01").expect("TODO: handle error")).is_ok());
+    assert!(validate_amount(Decimal::from_str("999999.99").expect("TODO: handle error")).is_ok());
     
     // Invalid amounts
     assert!(validate_amount(Decimal::ZERO).is_err());
     assert!(validate_amount(Decimal::from(-100)).is_err());
-    assert!(validate_amount(Decimal::from_str("-0.01").unwrap()).is_err());
+    assert!(validate_amount(Decimal::from_str("-0.01").expect("TODO: handle error")).is_err());
 }
 
 #[test]

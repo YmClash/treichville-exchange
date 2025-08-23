@@ -367,24 +367,29 @@ impl TransactionService {
             ));
         }
 
-        // Transfer funds if using wallets
+        // Transfer funds atomically if using wallets
         if transaction.payment_method != PaymentMethod::Cash {
-            // Release reserved funds
-            self.wallet_service.release(
-                changeur_id,
-                &transaction.to_currency,
-                transaction.amount_to,
-                &transaction.reference,
-            ).await?;
-
-            // Transfer to client
+            // Use atomic transfer to ensure ACID compliance
+            // This prevents any possibility of money loss if server crashes
             self.wallet_service.transfer(
                 changeur_id,
                 transaction.client_id,
                 &transaction.to_currency,
                 transaction.amount_to,
-                &transaction.reference,
-            ).await?;
+                &format!("{}-complete", transaction.reference),
+            ).await
+            .map_err(|e| {
+                error!(
+                    "Failed to complete atomic transfer for transaction {}: {}",
+                    transaction_id, e
+                );
+                e
+            })?;
+            
+            info!(
+                "Atomic transfer completed for transaction {}",
+                transaction_id
+            );
         }
 
         // Update status

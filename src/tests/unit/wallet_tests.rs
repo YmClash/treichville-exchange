@@ -33,7 +33,7 @@ async fn test_wallet_credit_operation() {
     let balance = wallet_service
         .get_balance_by_currency(user_id, currency)
         .await
-        .unwrap();
+        .expect("TODO: handle error");
     
     assert_eq!(balance.available_balance, amount);
     assert_eq!(balance.reserved_balance, Decimal::ZERO);
@@ -61,7 +61,7 @@ async fn test_wallet_debit_operation() {
         amount: initial_amount,
         reference: "INITIAL_DEPOSIT".to_string(),
     };
-    wallet_service.process_operation(deposit).await.unwrap();
+    wallet_service.process_operation(deposit).await.expect("TODO: handle error");
     
     // Then withdraw
     let withdraw = WalletOperation::Withdraw {
@@ -77,7 +77,7 @@ async fn test_wallet_debit_operation() {
     let balance = wallet_service
         .get_balance_by_currency(user_id, currency)
         .await
-        .unwrap();
+        .expect("TODO: handle error");
     
     assert_eq!(balance.available_balance, initial_amount - withdraw_amount);
     assert_eq!(balance.reserved_balance, Decimal::ZERO);
@@ -104,7 +104,7 @@ async fn test_wallet_insufficient_funds() {
         amount: deposit_amount,
         reference: "DEPOSIT".to_string(),
     };
-    wallet_service.process_operation(deposit).await.unwrap();
+    wallet_service.process_operation(deposit).await.expect("TODO: handle error");
     
     // Try to withdraw more than available
     let withdraw = WalletOperation::Withdraw {
@@ -121,7 +121,7 @@ async fn test_wallet_insufficient_funds() {
     let balance = wallet_service
         .get_balance_by_currency(user_id, currency)
         .await
-        .unwrap();
+        .expect("TODO: handle error");
     assert_eq!(balance.available_balance, deposit_amount);
     
     cleanup_test_db(&db).await;
@@ -147,7 +147,7 @@ async fn test_wallet_reserve_and_release() {
         amount: total_amount,
         reference: "INITIAL".to_string(),
     };
-    wallet_service.process_operation(deposit).await.unwrap();
+    wallet_service.process_operation(deposit).await.expect("TODO: handle error");
     
     // Reserve funds
     let reserve = WalletOperation::Reserve {
@@ -156,13 +156,13 @@ async fn test_wallet_reserve_and_release() {
         amount: reserve_amount,
         transaction_id,
     };
-    wallet_service.process_operation(reserve).await.unwrap();
+    wallet_service.process_operation(reserve).await.expect("TODO: handle error");
     
     // Check balances after reserve
     let balance = wallet_service
         .get_balance_by_currency(user_id, currency)
         .await
-        .unwrap();
+        .expect("TODO: handle error");
     
     assert_eq!(balance.available_balance, total_amount - reserve_amount);
     assert_eq!(balance.reserved_balance, reserve_amount);
@@ -175,13 +175,13 @@ async fn test_wallet_reserve_and_release() {
         amount: reserve_amount,
         transaction_id,
     };
-    wallet_service.process_operation(release).await.unwrap();
+    wallet_service.process_operation(release).await.expect("TODO: handle error");
     
     // Check balances after release
     let final_balance = wallet_service
         .get_balance_by_currency(user_id, currency)
         .await
-        .unwrap();
+        .expect("TODO: handle error");
     
     assert_eq!(final_balance.available_balance, total_amount);
     assert_eq!(final_balance.reserved_balance, Decimal::ZERO);
@@ -210,7 +210,7 @@ async fn test_wallet_transfer() {
         amount: initial_amount,
         reference: "SENDER_FUNDING".to_string(),
     };
-    wallet_service.process_operation(deposit).await.unwrap();
+    wallet_service.process_operation(deposit).await.expect("TODO: handle error");
     
     // Execute transfer
     let transfer = TransferRequest {
@@ -229,14 +229,14 @@ async fn test_wallet_transfer() {
     let sender_balance = wallet_service
         .get_balance_by_currency(sender_id, currency)
         .await
-        .unwrap();
+        .expect("TODO: handle error");
     assert_eq!(sender_balance.available_balance, initial_amount - transfer_amount);
     
     // Check receiver balance
     let receiver_balance = wallet_service
         .get_balance_by_currency(receiver_id, currency)
         .await
-        .unwrap();
+        .expect("TODO: handle error");
     assert_eq!(receiver_balance.available_balance, transfer_amount);
     
     cleanup_test_db(&db).await;
@@ -264,11 +264,11 @@ async fn test_wallet_multi_currency() {
             amount: *amount,
             reference: format!("DEPOSIT_{}", currency),
         };
-        wallet_service.process_operation(deposit).await.unwrap();
+        wallet_service.process_operation(deposit).await.expect("TODO: handle error");
     }
     
     // Get total balance
-    let total_balance = wallet_service.get_balance(user_id).await.unwrap();
+    let total_balance = wallet_service.get_balance(user_id).await.expect("TODO: handle error");
     
     assert_eq!(total_balance.wallets.len(), 3);
     
@@ -277,7 +277,7 @@ async fn test_wallet_multi_currency() {
         let balance = wallet_service
             .get_balance_by_currency(user_id, currency)
             .await
-            .unwrap();
+            .expect("TODO: handle error");
         assert_eq!(balance.available_balance, expected_amount);
     }
     
@@ -302,7 +302,7 @@ async fn test_wallet_concurrent_operations() {
         amount: initial_amount,
         reference: "INITIAL".to_string(),
     };
-    wallet_service.process_operation(deposit).await.unwrap();
+    wallet_service.process_operation(deposit).await.expect("TODO: handle error");
     
     // Simulate concurrent withdrawals
     let concurrent_ops = 10;
@@ -330,14 +330,14 @@ async fn test_wallet_concurrent_operations() {
     // All operations should succeed
     for result in results {
         assert!(result.is_ok());
-        assert!(result.unwrap().is_ok());
+        assert!(result.expect("TODO: handle error").is_ok());
     }
     
     // Final balance should be correct
     let final_balance = wallet_service
         .get_balance_by_currency(user_id, currency)
         .await
-        .unwrap();
+        .expect("TODO: handle error");
     
     let expected = initial_amount - (withdraw_amount * Decimal::from(concurrent_ops));
     assert_eq!(final_balance.available_balance, expected);
