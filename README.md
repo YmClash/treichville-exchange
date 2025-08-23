@@ -1,4 +1,4 @@
-# Treichville Exchange - Backend Platform
+# Treichville Exchange - Fintech Platform
 
 ## 🌍 Overview
 
@@ -196,7 +196,7 @@ Proprietary - All rights reserved
 
 ## 👥 Team
 
-Built with ❤️ by the Treichville Exchange team for the vibrant trading community of Rue 12.
+Built with ❤️ by Ymc for the vibrant trading community of Rue 12.
 
 ## 📞 Support
 
