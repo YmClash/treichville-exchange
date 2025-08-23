@@ -1,0 +1,73 @@
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+
+# Environment
+.env
+.env.local
+.env.*.local
+*.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+audit.log
+
+# Test coverage
+*.profraw
+*.profdata
+coverage/
+tarpaulin-report.html
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploads
+uploads/
+temp/
+tmp/
+
+# Docker volumes
+postgres_data/
+redis_data/
+pgadmin_data/
+prometheus_data/
+grafana_data/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Build artifacts
+dist/
+build/
+
+# Documentation
+/target/doc/
+
+# Backup files
+*.bak
+*.backup
+
+# Keys and certificates
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Performance profiles
+*.perf
+flamegraph.svg
+perf.data*
