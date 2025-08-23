@@ -60,7 +60,7 @@ async fn test_matching_engine_scoring() {
     };
     
     // Find best match
-    let matches = matching_engine.find_matches(criteria).await.unwrap();
+    let matches = matching_engine.find_matches(criteria).await.expect("TODO: handle error");
     
     assert!(!matches.is_empty());
     // Premium changeur should rank first due to best rate and high rating
@@ -174,7 +174,7 @@ async fn test_matching_minimum_amount_filter() {
         max_amount: Some(Decimal::from(5000)), // Maximum 5000 EUR
     };
     
-    rate_repo.create(changeur_id, rate).await.unwrap();
+    rate_repo.create(changeur_id, rate).await.expect("TODO: handle error");
     
     // Test with amount below minimum
     let below_min_criteria = MatchCriteria {
@@ -186,7 +186,7 @@ async fn test_matching_minimum_amount_filter() {
         preferred_changeur_id: None,
     };
     
-    let matches = matching_engine.find_matches(below_min_criteria).await.unwrap();
+    let matches = matching_engine.find_matches(below_min_criteria).await.expect("TODO: handle error");
     assert!(matches.is_empty(), "Should not match when below minimum amount");
     
     // Test with amount above maximum
@@ -199,7 +199,7 @@ async fn test_matching_minimum_amount_filter() {
         preferred_changeur_id: None,
     };
     
-    let matches = matching_engine.find_matches(above_max_criteria).await.unwrap();
+    let matches = matching_engine.find_matches(above_max_criteria).await.expect("TODO: handle error");
     assert!(matches.is_empty(), "Should not match when above maximum amount");
     
     cleanup_test_db(&db).await;

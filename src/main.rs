@@ -6,6 +6,7 @@ use tracing::{info, error};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use tokio::signal;
 
+mod config;
 mod domain;
 mod application;
 mod infrastructure;
@@ -13,8 +14,10 @@ mod presentation;
 mod shared;
 
 use crate::{
+    config::settings::Settings,
     shared::{
         config::Config,
+        config_adapter::settings_to_config,
         state::AppState,
     },
     application::{
@@ -48,7 +51,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Validators initialized");
 
     // Load configuration
-    let config = Config::from_env()?;
+    let settings = Settings::from_env()
+        .map_err(|e| {
+            error!("Failed to load configuration: {}", e);
+            Box::new(e) as Box<dyn std::error::Error>
+        })?;
+    let config = settings_to_config(&settings);
     info!("Configuration loaded successfully");
 
     // Connect to PostgreSQL
@@ -71,7 +79,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let redis_pool = Arc::new(
         infrastructure::redis_pool::RedisPool::new(config.redis.url.clone())
             .await
-            .expect("Failed to create Redis pool")
+            .map_err(|e| {
+                error!("Failed to create Redis pool: {}", e);
+                Box::new(e) as Box<dyn std::error::Error>
+            })?
     );
     
     // Get initial connection for services that need ConnectionManager
@@ -101,10 +112,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     let rate_aggregator = Arc::new(RateAggregator {});
     
+    let default_fee = rust_decimal::Decimal::from_str("0.01")
+        .unwrap_or_else(|e| {
+            error!("Failed to parse default fee, using 0.01: {}", e);
+            rust_decimal::Decimal::from(1) / rust_decimal::Decimal::from(100)
+        });
+    
     let rate_service = Arc::new(RateService::new(
         rate_repository.clone(),
         rate_cache.clone(),
-        rust_decimal::Decimal::from_str("0.01").unwrap(), // 1% fee
+        default_fee, // 1% fee
     ));
     
     let matching_engine = Arc::new(MatchingEngine::new());
@@ -175,17 +192,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn shutdown_signal() {
     let ctrl_c = async {
-        signal::ctrl_c()
-            .await
-            .expect("failed to install Ctrl+C handler");
+        if let Err(e) = signal::ctrl_c().await {
+            error!("Failed to install Ctrl+C handler: {}", e);
+        }
     };
 
     #[cfg(unix)]
     let terminate = async {
-        signal::unix::signal(signal::unix::SignalKind::terminate())
-            .expect("failed to install signal handler")
-            .recv()
-            .await;
+        match signal::unix::signal(signal::unix::SignalKind::terminate()) {
+            Ok(mut sig) => { sig.recv().await; },
+            Err(e) => {
+                error!("Failed to install signal handler: {}", e);
+            }
+        }
     };
 
     #[cfg(not(unix))]

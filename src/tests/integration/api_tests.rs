@@ -20,10 +20,10 @@ async fn test_health_endpoint() {
             Request::builder()
                 .uri("/health")
                 .body(Body::empty())
-                .unwrap(),
+                .expect("TODO: handle error"),
         )
         .await
-        .unwrap();
+        .expect("TODO: handle error");
     
     assert_eq!(response.status(), StatusCode::OK);
 }
@@ -47,16 +47,16 @@ async fn test_register_endpoint() {
                 .method("POST")
                 .uri("/api/v1/auth/register")
                 .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&payload).unwrap()))
-                .unwrap(),
+                .body(Body::from(serde_json::to_string(&payload).expect("TODO: handle error")))
+                .expect("TODO: handle error"),
         )
         .await
-        .unwrap();
+        .expect("TODO: handle error");
     
     assert_eq!(response.status(), StatusCode::CREATED);
     
-    let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
-    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let body = hyper::body::to_bytes(response.into_body()).await.expect("TODO: handle error");
+    let json: serde_json::Value = serde_json::from_slice(&body).expect("TODO: handle error");
     
     assert!(json["access_token"].is_string());
     assert!(json["refresh_token"].is_string());
@@ -83,11 +83,11 @@ async fn test_login_endpoint() {
                 .method("POST")
                 .uri("/api/v1/auth/register")
                 .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&register_payload).unwrap()))
-                .unwrap(),
+                .body(Body::from(serde_json::to_string(&register_payload).expect("TODO: handle error")))
+                .expect("TODO: handle error"),
         )
         .await
-        .unwrap();
+        .expect("TODO: handle error");
     
     // Then login
     let login_payload = json!({
@@ -101,16 +101,16 @@ async fn test_login_endpoint() {
                 .method("POST")
                 .uri("/api/v1/auth/login")
                 .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&login_payload).unwrap()))
-                .unwrap(),
+                .body(Body::from(serde_json::to_string(&login_payload).expect("TODO: handle error")))
+                .expect("TODO: handle error"),
         )
         .await
-        .unwrap();
+        .expect("TODO: handle error");
     
     assert_eq!(response.status(), StatusCode::OK);
     
-    let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
-    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let body = hyper::body::to_bytes(response.into_body()).await.expect("TODO: handle error");
+    let json: serde_json::Value = serde_json::from_slice(&body).expect("TODO: handle error");
     
     assert!(json["access_token"].is_string());
     assert!(json["refresh_token"].is_string());
@@ -126,10 +126,10 @@ async fn test_protected_endpoint_without_auth() {
                 .method("GET")
                 .uri("/api/v1/auth/me")
                 .body(Body::empty())
-                .unwrap(),
+                .expect("TODO: handle error"),
         )
         .await
-        .unwrap();
+        .expect("TODO: handle error");
     
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
@@ -148,10 +148,10 @@ async fn test_protected_endpoint_with_auth() {
                 .uri("/api/v1/auth/me")
                 .header("authorization", format!("Bearer {}", token))
                 .body(Body::empty())
-                .unwrap(),
+                .expect("TODO: handle error"),
         )
         .await
-        .unwrap();
+        .expect("TODO: handle error");
     
     assert_eq!(response.status(), StatusCode::OK);
 }
@@ -166,15 +166,15 @@ async fn test_public_rates_endpoint() {
                 .method("GET")
                 .uri("/api/v1/rates/public")
                 .body(Body::empty())
-                .unwrap(),
+                .expect("TODO: handle error"),
         )
         .await
-        .unwrap();
+        .expect("TODO: handle error");
     
     assert_eq!(response.status(), StatusCode::OK);
     
-    let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
-    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let body = hyper::body::to_bytes(response.into_body()).await.expect("TODO: handle error");
+    let json: serde_json::Value = serde_json::from_slice(&body).expect("TODO: handle error");
     
     assert!(json.is_array() || json.is_object());
 }
@@ -203,11 +203,11 @@ async fn test_changeur_rate_creation() {
                 .uri("/api/v1/rates")
                 .header("authorization", format!("Bearer {}", token))
                 .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&rate_payload).unwrap()))
-                .unwrap(),
+                .body(Body::from(serde_json::to_string(&rate_payload).expect("TODO: handle error")))
+                .expect("TODO: handle error"),
         )
         .await
-        .unwrap();
+        .expect("TODO: handle error");
     
     assert_eq!(response.status(), StatusCode::CREATED);
 }
@@ -225,10 +225,10 @@ async fn test_rate_limit() {
                 Request::builder()
                     .uri("/health")
                     .body(Body::empty())
-                    .unwrap(),
+                    .expect("TODO: handle error"),
             )
             .await
-            .unwrap();
+            .expect("TODO: handle error");
         
         responses.push(response.status());
     }
@@ -250,10 +250,10 @@ async fn test_cors_headers() {
                 .header("origin", "http://localhost:3000")
                 .header("access-control-request-method", "GET")
                 .body(Body::empty())
-                .unwrap(),
+                .expect("TODO: handle error"),
         )
         .await
-        .unwrap();
+        .expect("TODO: handle error");
     
     assert_eq!(response.status(), StatusCode::OK);
     assert!(response.headers().contains_key("access-control-allow-origin"));
@@ -369,16 +369,16 @@ async fn get_test_auth_token(app: &axum::Router) -> String {
                 .method("POST")
                 .uri("/api/v1/auth/register")
                 .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&payload).unwrap()))
-                .unwrap(),
+                .body(Body::from(serde_json::to_string(&payload).expect("TODO: handle error")))
+                .expect("TODO: handle error"),
         )
         .await
-        .unwrap();
+        .expect("TODO: handle error");
     
-    let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
-    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let body = hyper::body::to_bytes(response.into_body()).await.expect("TODO: handle error");
+    let json: serde_json::Value = serde_json::from_slice(&body).expect("TODO: handle error");
     
-    json["access_token"].as_str().unwrap().to_string()
+    json["access_token"].as_str().expect("TODO: handle error").to_string()
 }
 
 async fn get_test_changeur_token(app: &axum::Router) -> String {
@@ -397,14 +397,14 @@ async fn get_test_changeur_token(app: &axum::Router) -> String {
                 .method("POST")
                 .uri("/api/v1/auth/register")
                 .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&payload).unwrap()))
-                .unwrap(),
+                .body(Body::from(serde_json::to_string(&payload).expect("TODO: handle error")))
+                .expect("TODO: handle error"),
         )
         .await
-        .unwrap();
+        .expect("TODO: handle error");
     
-    let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
-    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let body = hyper::body::to_bytes(response.into_body()).await.expect("TODO: handle error");
+    let json: serde_json::Value = serde_json::from_slice(&body).expect("TODO: handle error");
     
-    json["access_token"].as_str().unwrap().to_string()
+    json["access_token"].as_str().expect("TODO: handle error").to_string()
 }

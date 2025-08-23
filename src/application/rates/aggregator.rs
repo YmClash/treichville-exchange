@@ -63,10 +63,15 @@ impl RateAggregator {
         buy_rates.sort();
         sell_rates.sort();
 
-        let best_buy_rate = *buy_rates.last().unwrap(); // Higher is better for buying
-        let worst_buy_rate = *buy_rates.first().unwrap();
-        let best_sell_rate = *sell_rates.first().unwrap(); // Lower is better for selling
-        let worst_sell_rate = *sell_rates.last().unwrap();
+        // These should not fail since we check for empty rates at the beginning
+        let best_buy_rate = *buy_rates.last()
+            .ok_or_else(|| AppError::InternalServerError)?; // Higher is better for buying
+        let worst_buy_rate = *buy_rates.first()
+            .ok_or_else(|| AppError::InternalServerError)?;
+        let best_sell_rate = *sell_rates.first()
+            .ok_or_else(|| AppError::InternalServerError)?; // Lower is better for selling
+        let worst_sell_rate = *sell_rates.last()
+            .ok_or_else(|| AppError::InternalServerError)?;
 
         let average_buy_rate = buy_rates.iter().sum::<Decimal>() / Decimal::from(buy_rates.len());
         let average_sell_rate = sell_rates.iter().sum::<Decimal>() / Decimal::from(sell_rates.len());

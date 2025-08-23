@@ -98,7 +98,7 @@ async fn test_auth_service_register() {
     let result = auth_service.register(register_dto).await;
     assert!(result.is_ok());
     
-    let response = result.unwrap();
+    let response = result.expect("TODO: handle error");
     assert!(!response.access_token.is_empty());
     assert!(!response.refresh_token.is_empty());
     assert_eq!(response.user.email, "test@example.com");
@@ -129,7 +129,7 @@ async fn test_auth_service_login_success() {
         role: UserRole::Client,
     };
     
-    auth_service.register(register_dto).await.unwrap();
+    auth_service.register(register_dto).await.expect("TODO: handle error");
     
     // Now try to login
     let login_dto = LoginDto {
@@ -141,7 +141,7 @@ async fn test_auth_service_login_success() {
     let result = auth_service.login(login_dto).await;
     assert!(result.is_ok());
     
-    let response = result.unwrap();
+    let response = result.expect("TODO: handle error");
     assert!(!response.access_token.is_empty());
     assert!(!response.refresh_token.is_empty());
     
@@ -171,7 +171,7 @@ async fn test_auth_service_login_wrong_password() {
         role: UserRole::Client,
     };
     
-    auth_service.register(register_dto).await.unwrap();
+    auth_service.register(register_dto).await.expect("TODO: handle error");
     
     // Try to login with wrong password
     let login_dto = LoginDto {

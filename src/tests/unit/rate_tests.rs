@@ -58,11 +58,11 @@ async fn test_rate_aggregator_calculations() {
         .zip(rates.into_iter())
         .enumerate()
     {
-        rate_repo.create(changeur_id, dto).await.unwrap();
+        rate_repo.create(changeur_id, dto).await.expect("TODO: handle error");
     }
     
     // Test aggregation
-    let aggregated = aggregator.aggregate_rates("EUR", "XOF").await.unwrap();
+    let aggregated = aggregator.aggregate_rates("EUR", "XOF").await.expect("TODO: handle error");
     
     // Check calculations
     assert_decimal_close(aggregated.average_buy, Decimal::from(650), Decimal::from(1));
@@ -96,7 +96,7 @@ async fn test_rate_manipulation_detection() {
             min_amount: Some(Decimal::from(10)),
             max_amount: Some(Decimal::from(5000)),
         };
-        rate_repo.create(changeur_id, rate).await.unwrap();
+        rate_repo.create(changeur_id, rate).await.expect("TODO: handle error");
     }
     
     // Test manipulation detection with outlier rate
@@ -106,7 +106,7 @@ async fn test_rate_manipulation_detection() {
     let is_manipulation = rate_repo
         .detect_manipulation(manipulator_id, "USD", "XOF", outlier_rate)
         .await
-        .unwrap();
+        .expect("TODO: handle error");
     
     assert!(is_manipulation, "Should detect rate manipulation");
     
@@ -115,7 +115,7 @@ async fn test_rate_manipulation_detection() {
     let is_normal = rate_repo
         .detect_manipulation(manipulator_id, "USD", "XOF", normal_rate)
         .await
-        .unwrap();
+        .expect("TODO: handle error");
     
     assert!(!is_normal, "Should not flag normal rate as manipulation");
     
@@ -131,21 +131,21 @@ async fn test_rate_cache_operations() {
     let test_rate = TestFixtures::create_test_rate(Uuid::new_v4());
     
     // Test set and get
-    cache.set_rate(&test_rate).await.unwrap();
+    cache.set_rate(&test_rate).await.expect("TODO: handle error");
     
     let cached = cache
         .get_rate(test_rate.id)
         .await
-        .unwrap()
+        .expect("TODO: handle error")
         .expect("Rate should be in cache");
     
     assert_rate_equal(&test_rate, &cached);
     
     // Test cache expiry (TTL)
-    cache.set_with_ttl(&test_rate, 1).await.unwrap();
+    cache.set_with_ttl(&test_rate, 1).await.expect("TODO: handle error");
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
     
-    let expired = cache.get_rate(test_rate.id).await.unwrap();
+    let expired = cache.get_rate(test_rate.id).await.expect("TODO: handle error");
     assert!(expired.is_none(), "Rate should have expired");
     
     cleanup_test_redis(&mut redis_conn).await;
@@ -178,14 +178,14 @@ async fn test_best_rate_calculation() {
             min_amount: Some(Decimal::from(10)),
             max_amount: Some(Decimal::from(10000)),
         };
-        rate_service.create_rate(changeur_id, dto).await.unwrap();
+        rate_service.create_rate(changeur_id, dto).await.expect("TODO: handle error");
     }
     
     // Get best rates
     let best_rates = rate_service
         .get_best_rates("EUR", "XOF", Decimal::from(1000))
         .await
-        .unwrap();
+        .expect("TODO: handle error");
     
     assert!(!best_rates.rates.is_empty());
     // First rate should be the best one
@@ -215,7 +215,7 @@ async fn test_quote_generation() {
         min_amount: Some(Decimal::from(10)),
         max_amount: Some(Decimal::from(10000)),
     };
-    rate_service.create_rate(changeur_id, dto).await.unwrap();
+    rate_service.create_rate(changeur_id, dto).await.expect("TODO: handle error");
     
     // Generate quote for buying EUR with XOF
     let quote_request = crate::domain::rate::GetQuoteRequest {
@@ -225,7 +225,7 @@ async fn test_quote_generation() {
         operation: ExchangeOperation::Buy,
     };
     
-    let quote = rate_service.get_quote(quote_request).await.unwrap();
+    let quote = rate_service.get_quote(quote_request).await.expect("TODO: handle error");
     
     assert_eq!(quote.from_currency, "XOF");
     assert_eq!(quote.to_currency, "EUR");
@@ -274,10 +274,10 @@ async fn test_market_depth() {
             min_amount: Some(Decimal::from(10)),
             max_amount: Some(*volume),
         };
-        rate_service.create_rate(Uuid::new_v4(), dto).await.unwrap();
+        rate_service.create_rate(Uuid::new_v4(), dto).await.expect("TODO: handle error");
     }
     
-    let depth = rate_service.get_market_depth("EUR", "XOF").await.unwrap();
+    let depth = rate_service.get_market_depth("EUR", "XOF").await.expect("TODO: handle error");
     
     assert_eq!(depth.buy_orders.len(), 3);
     assert_eq!(depth.sell_orders.len(), 3);

@@ -1,3 +1,4 @@
+pub mod atomic_operations;
 pub mod matching_engine;
 pub mod transaction_service;
 pub mod payment_processor;

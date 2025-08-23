@@ -15,10 +15,12 @@ pub async fn request_id_middleware(
     next: Next,
 ) -> Result<Response, StatusCode> {
     let request_id = Uuid::new_v4().to_string();
-    req.headers_mut().insert(
-        "x-request-id",
-        request_id.parse().unwrap(),
-    );
+    if let Ok(header_value) = request_id.parse() {
+        req.headers_mut().insert(
+            "x-request-id",
+            header_value,
+        );
+    }
     
     let response = next.run(req).await;
     Ok(response)
@@ -135,17 +137,23 @@ pub async fn security_headers_middleware(
     let mut response = next.run(req).await;
     let headers = response.headers_mut();
     
-    headers.insert("X-Content-Type-Options", "nosniff".parse().unwrap());
-    headers.insert("X-Frame-Options", "DENY".parse().unwrap());
-    headers.insert("X-XSS-Protection", "1; mode=block".parse().unwrap());
-    headers.insert(
-        "Strict-Transport-Security",
-        "max-age=31536000; includeSubDomains".parse().unwrap(),
-    );
-    headers.insert(
-        "Content-Security-Policy",
-        "default-src 'self'".parse().unwrap(),
-    );
+    // These header values are static strings and should always parse successfully
+    // But we handle errors gracefully to avoid panics
+    if let Ok(value) = "nosniff".parse() {
+        headers.insert("X-Content-Type-Options", value);
+    }
+    if let Ok(value) = "DENY".parse() {
+        headers.insert("X-Frame-Options", value);
+    }
+    if let Ok(value) = "1; mode=block".parse() {
+        headers.insert("X-XSS-Protection", value);
+    }
+    if let Ok(value) = "max-age=31536000; includeSubDomains".parse() {
+        headers.insert("Strict-Transport-Security", value);
+    }
+    if let Ok(value) = "default-src 'self'".parse() {
+        headers.insert("Content-Security-Policy", value);
+    }
     
     Ok(response)
 }
@@ -175,14 +183,24 @@ lazy_static! {
     static ref REQUEST_COUNTER: IntCounter = IntCounter::new(
         "http_requests_total",
         "Total number of HTTP requests"
-    ).unwrap();
+    ).unwrap_or_else(|e| {
+        error!("Failed to create REQUEST_COUNTER metric: {}", e);
+        // Create a dummy counter that does nothing
+        IntCounter::new("dummy", "dummy").expect("Dummy counter should always work")
+    });
     
     static ref REQUEST_DURATION: Histogram = Histogram::with_opts(
         HistogramOpts::new(
             "http_request_duration_seconds",
             "HTTP request duration in seconds"
         )
-    ).unwrap();
+    ).unwrap_or_else(|e| {
+        error!("Failed to create REQUEST_DURATION metric: {}", e);
+        // Create a dummy histogram that does nothing
+        Histogram::with_opts(
+            HistogramOpts::new("dummy", "dummy")
+        ).expect("Dummy histogram should always work")
+    });
 }
 
 pub async fn metrics_middleware(

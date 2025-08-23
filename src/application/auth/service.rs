@@ -7,6 +7,7 @@ use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::{Pool, Postgres};
+use tracing::log::warn;
 use uuid::Uuid;
 use validator::Validate;
 
@@ -218,8 +219,8 @@ impl AuthService {
             if request.two_fa_code.is_none() {
                 return Err(AppError::authentication("2FA code required"));
             }
-            
             // TODO: Implement actual 2FA verification
+            warn!("2FA verification not implemented");
             // For now, we'll skip the actual verification
         }
 
@@ -424,6 +425,7 @@ impl AuthService {
 
     async fn log_auth_event(&self, user_id: &Uuid, action: &str) -> Result<(), AppError> {
         // TODO: Implement audit logging
+
         // For now, just log to tracing
         tracing::info!(user_id = %user_id, action = action, "Auth event");
         Ok(())
@@ -505,17 +507,22 @@ impl AuthService {
     
     pub async fn enable_2fa(&self, user_id: Uuid, dto: Enable2FADto) -> Result<String, AppError> {
         // TODO: Generate and store 2FA secret
-        todo!("Implement enable_2fa")
+        todo!("Implement enable_2fa code")
+        // warn!("2FA enabling not implemented");
+
+
     }
     
     pub async fn verify_2fa(&self, user_id: Uuid, dto: Verify2FADto) -> Result<(), AppError> {
-        // TODO: Verify 2FA code
-        todo!("Implement verify_2fa")
+        // todo!("Implement verify_2fa code")
+        todo!("Implement verify_2fa code")
+        // warn!("2FA verification not implemented");
     }
     
     pub async fn disable_2fa(&self, user_id: Uuid, password: String) -> Result<(), AppError> {
         // TODO: Disable 2FA after password verification
-        todo!("Implement disable_2fa")
+        todo!("Implement disable_2fa code")
+        // warn!("2FA disabling not implemented");
     }
     
     pub async fn get_users(&self, page: Option<u32>, limit: Option<u32>, role: Option<String>, active: Option<bool>) -> Result<Vec<User>, AppError> {
@@ -559,10 +566,14 @@ impl AuthService {
     }
     
     pub async fn verify_changeur(&self, user_id: Uuid, verification_type: String, documents: Vec<String>) -> Result<(), AppError> {
-        // TODO: Implement changeur verification
+        //Implement changeur verification
+
+        let documents_json = serde_json::to_value(documents)
+            .map_err(|e| AppError::validation(format!("Invalid documents format: {}", e)))?;
+        
         sqlx::query("UPDATE users SET is_verified = true, verification_type = $1, verification_documents = $2, verified_at = NOW() WHERE id = $3")
             .bind(verification_type)
-            .bind(serde_json::to_value(documents).unwrap())
+            .bind(documents_json)
             .bind(user_id)
             .execute(&self.db)
             .await?;
@@ -571,16 +582,17 @@ impl AuthService {
     
     pub async fn get_active_sessions(&self, user_id: Uuid) -> Result<Vec<String>, AppError> {
         // TODO: Implement session tracking
+        // warn!("Session tracking not implemented");
         Ok(vec![])
     }
     
     pub async fn revoke_session(&self, user_id: Uuid, session_id: String) -> Result<(), AppError> {
         // TODO: Implement session revocation
+        warn!("Session revocation not implemented");
         Ok(())
     }
     
     pub async fn revoke_all_sessions(&self, user_id: Uuid) -> Result<(), AppError> {
-        // TODO: Implement revoke all sessions
         sqlx::query("DELETE FROM user_sessions WHERE user_id = $1")
             .bind(user_id)
 

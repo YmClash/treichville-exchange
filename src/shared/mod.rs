@@ -1,4 +1,5 @@
 pub mod config;
+pub mod config_adapter;
 pub mod errors;
 pub mod state;
 pub mod utils;

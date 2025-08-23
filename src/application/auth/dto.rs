@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use tracing::log::warn;
 use validator::Validate;
 use uuid::Uuid;
 use crate::domain::user::{User, UserRole};
@@ -15,6 +16,13 @@ pub struct RegisterDto {
     pub password: String,
     pub role: Option<UserRole>,
 }
+
+// impl RegisterDto {
+//     pub(crate) fn validate(&self)->Result<(), String> {
+//         todo!();
+//         warn!("RegisterDto::validate is not implemented yet");
+//     }
+// }
 
 #[derive(Debug, Deserialize, Validate)]
 pub struct LoginDto {
@@ -53,5 +61,6 @@ pub struct Enable2FADto {
 pub struct Verify2FADto {
     pub code: String,
 }
+
 
 

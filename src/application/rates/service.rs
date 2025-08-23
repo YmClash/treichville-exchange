@@ -466,11 +466,15 @@ impl RateService {
         let stats = RateStatistics {
             period_start: start,
             period_end: end,
-            min_buy_rate: *buy_rates.iter().min().unwrap(),
-            max_buy_rate: *buy_rates.iter().max().unwrap(),
+            min_buy_rate: *buy_rates.iter().min()
+                .ok_or_else(|| AppError::InternalServerError)?,
+            max_buy_rate: *buy_rates.iter().max()
+                .ok_or_else(|| AppError::InternalServerError)?,
             avg_buy_rate: buy_rates.iter().sum::<Decimal>() / Decimal::from(buy_rates.len()),
-            min_sell_rate: *sell_rates.iter().min().unwrap(),
-            max_sell_rate: *sell_rates.iter().max().unwrap(),
+            min_sell_rate: *sell_rates.iter().min()
+                .ok_or_else(|| AppError::InternalServerError)?,
+            max_sell_rate: *sell_rates.iter().max()
+                .ok_or_else(|| AppError::InternalServerError)?,
             avg_sell_rate: sell_rates.iter().sum::<Decimal>() / Decimal::from(sell_rates.len()),
             volatility_buy: RateAggregator::calculate_std_deviation(&buy_rates),
             volatility_sell: RateAggregator::calculate_std_deviation(&sell_rates),
