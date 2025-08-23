@@ -1,5 +1,5 @@
-#FROM mcr.microsoft.com/devcontainers/rust:0-1-bullseye
-FROM ubuntu:latest
+FROM mcr.microsoft.com/devcontainers/rust:0-1-bullseye
+#FROM ubuntu:latest
 LABEL authors="y_mc"
 
 #ENTRYPOINT ["top", "-b"]
