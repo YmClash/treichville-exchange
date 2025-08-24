@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hors ligne - Treichville Exchange</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #FF6B00 0%, #2E7D32 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            max-width: 420px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+        }
+        
+        .icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 24px;
+            background: linear-gradient(135deg, #FF6B00 0%, #2E7D32 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 40px;
+            font-weight: bold;
+        }
+        
+        h1 {
+            color: #1a1a1a;
+            font-size: 24px;
+            margin-bottom: 12px;
+        }
+        
+        p {
+            color: #666;
+            font-size: 16px;
+            line-height: 1.6;
+            margin-bottom: 32px;
+        }
+        
+        .status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px 20px;
+            background: #FFF3E0;
+            border-radius: 8px;
+            margin-bottom: 24px;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: #FF9800;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-text {
+            color: #E65100;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #FF6B00 0%, #FF8E00 100%);
+            color: white;
+            border: none;
+            padding: 14px 32px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(255, 107, 0, 0.3);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        .features {
+            margin-top: 32px;
+            padding-top: 32px;
+            border-top: 1px solid #e0e0e0;
+        }
+        
+        .feature-title {
+            font-size: 14px;
+            color: #999;
+            margin-bottom: 16px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .feature-list {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+        }
+        
+        .feature {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .feature-icon {
+            width: 40px;
+            height: 40px;
+            background: #f5f5f5;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+        
+        .feature-label {
+            font-size: 12px;
+            color: #666;
+        }
+        
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .container {
+                padding: 32px 24px;
+            }
+            
+            h1 {
+                font-size: 20px;
+            }
+            
+            p {
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">TE</div>
+        
+        <h1>Vous êtes hors ligne</h1>
+        
+        <div class="status">
+            <div class="status-dot"></div>
+            <span class="status-text">Aucune connexion internet</span>
+        </div>
+        
+        <p>
+            Treichville Exchange nécessite une connexion internet pour fonctionner. 
+            Vérifiez votre connexion et réessayez.
+        </p>
+        
+        <button onclick="window.location.reload()">
+            Réessayer
+        </button>
+        
+        <div class="features">
+            <div class="feature-title">Disponible hors ligne</div>
+            <div class="feature-list">
+                <div class="feature">
+                    <div class="feature-icon">📊</div>
+                    <span class="feature-label">Historique</span>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">💰</div>
+                    <span class="feature-label">Soldes</span>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">📈</div>
+                    <span class="feature-label">Taux</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Check connection status periodically
+        setInterval(() => {
+            if (navigator.onLine) {
+                window.location.reload();
+            }
+        }, 5000);
+        
+        // Listen for online event
+        window.addEventListener('online', () => {
+            window.location.reload();
+        });
+    </script>
+</body>
+</html>
