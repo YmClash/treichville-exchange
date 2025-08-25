@@ -218,10 +218,13 @@ pub async fn metrics_middleware(
     Ok(response)
 }
 
-// CORS configuration helper
+// CORS configuration helper - simplified for development
 pub fn cors_layer() -> tower_http::cors::CorsLayer {
-    use tower_http::cors::{Any, CorsLayer};
+    use tower_http::cors::{CorsLayer, Any};
+    use std::time::Duration;
     
+    // For development: allow all origins but without credentials
+    // Note: Cannot use allow_credentials(true) with allow_origin(Any)
     CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)

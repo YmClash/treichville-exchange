@@ -101,11 +101,12 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/v1/admin/wallet/reconcile", post(wallet::reconcile_wallet))
         .layer(middleware::from_fn_with_state(state.clone(), require_admin));
 
-    // Combine all routes
+    // Combine all routes with CORS layer
     Router::new()
         .merge(public_routes)
         .merge(protected_routes)
         .merge(admin_routes)
+        .layer(super::middleware::cors_layer())  // Add CORS layer here
         .with_state(state)
 }
 

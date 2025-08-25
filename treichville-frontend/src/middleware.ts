@@ -4,7 +4,11 @@ import type { NextRequest } from 'next/server';
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   
-  // Get token from cookies
+  // For now, disable middleware protection since tokens are in localStorage
+  // TODO: Move tokens to httpOnly cookies for better security
+  return NextResponse.next();
+  
+  // Get token from cookies (currently tokens are in localStorage, not cookies)
   const accessToken = request.cookies.get('access_token');
   const isAuthenticated = !!accessToken?.value;
   

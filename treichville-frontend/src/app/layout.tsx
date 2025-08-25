@@ -1,9 +1,16 @@
-import type { Metadata } from 'next';
+import type { Metadata,Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { QueryProvider } from '@/components/providers/QueryProvider';
+import { ServiceWorkerProvider } from '@/components/providers/ServiceWorkerProvider';
 
 const inter = Inter({ subsets: ['latin'] });
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#FF6B00',
+}
 
 export const metadata: Metadata = {
   title: {
@@ -20,15 +27,15 @@ export const metadata: Metadata = {
     address: false,
     telephone: false,
   },
-  viewport: {
-    width: 'device-width',
-    initialScale: 1,
-    maximumScale: 1,
-  },
-  themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#FF6B00' },
-    { media: '(prefers-color-scheme: dark)', color: '#FF6B00' },
-  ],
+  // viewport: {
+  //   width: 'device-width',
+  //   initialScale: 1,
+  //   maximumScale: 1,
+  // },
+  // themeColor: [
+  //   { media: '(prefers-color-scheme: light)', color: '#FF6B00' },
+  //   { media: '(prefers-color-scheme: dark)', color: '#FF6B00' },
+  // ],
   icons: {
     icon: [
       { url: '/favicon.ico' },
@@ -73,9 +80,11 @@ export default function RootLayout({
   return (
     <html lang="fr" suppressHydrationWarning>
       <body className={`${inter.className} antialiased`}>
-        <QueryProvider>
-          {children}
-        </QueryProvider>
+        <ServiceWorkerProvider>
+          <QueryProvider>
+            {children}
+          </QueryProvider>
+        </ServiceWorkerProvider>
       </body>
     </html>
   );

@@ -20,10 +20,20 @@ export const authApi = {
     const response = await apiClient.post('/api/v1/auth/login', data);
     const authData = response.data;
     
-    // Store tokens
-    setTokens(authData.access_token, authData.refresh_token);
+    // The backend returns tokens in a nested 'tokens' object
+    const tokens = authData.tokens || authData;
     
-    return authData;
+    // Store tokens
+    setTokens(tokens.access_token, tokens.refresh_token);
+    
+    // Return the correct format for the hook
+    return {
+      user: authData.user,
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      token_type: tokens.token_type || 'Bearer',
+      expires_in: tokens.expires_in || 900
+    };
   },
 
   // Logout
