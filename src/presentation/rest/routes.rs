@@ -15,8 +15,7 @@ use tower_http::{
 use crate::{
     application::auth::middleware::{AuthMiddleware, require_auth},
     presentation::rest::handlers::{auth, rates, exchange, wallet, health},
-    // presentation::middleware::{sql_injection_protection, security_headers},
-    shared::state::AppState,
+    shared::{state::AppState, sql_validator::SqlValidator},
 };
 
 pub fn create_router(state: Arc<AppState>) -> Router {
@@ -28,6 +27,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/health/ready", get(health::readiness))
         .route("/health/detailed", get(health::detailed_health))
         .route("/metrics", get(health::metrics))
+        .route("/metrics/prometheus", get(health::prometheus_metrics))
         .route("/version", get(health::version))
         
         // Auth endpoints
@@ -102,12 +102,18 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/v1/admin/wallet/reconcile", post(wallet::reconcile_wallet))
         .layer(middleware::from_fn_with_state(state.clone(), require_admin));
 
-    // Combine all routes with CORS layer
+    // Combine all routes with middleware layers
     Router::new()
         .merge(public_routes)
         .merge(protected_routes)
         .merge(admin_routes)
-        .layer(super::middleware::cors_layer())  // Add CORS layer here
+        // Add middlewares layer by layer for compatibility
+        .layer(middleware::from_fn(add_security_headers))
+        .layer(middleware::from_fn_with_state(state.clone(), check_sql_injection))
+        .layer(RequestBodyLimitLayer::new(10 * 1024 * 1024))
+        .layer(super::middleware::cors_layer())
+        .layer(CompressionLayer::new())
+        .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
 
@@ -160,6 +166,88 @@ async fn require_admin(
         Some(_) => Err(axum::http::StatusCode::FORBIDDEN),
         None => Err(axum::http::StatusCode::UNAUTHORIZED),
     }
+}
+
+// Middleware to add security headers
+async fn add_security_headers(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let mut response = next.run(request).await;
+    
+    let headers = response.headers_mut();
+    
+    // Add security headers
+    if let Ok(value) = "nosniff".parse() {
+        headers.insert("X-Content-Type-Options", value);
+    }
+    if let Ok(value) = "DENY".parse() {
+        headers.insert("X-Frame-Options", value);
+    }
+    if let Ok(value) = "1; mode=block".parse() {
+        headers.insert("X-XSS-Protection", value);
+    }
+    if let Ok(value) = "strict-origin-when-cross-origin".parse() {
+        headers.insert("Referrer-Policy", value);
+    }
+    if let Ok(value) = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'".parse() {
+        headers.insert("Content-Security-Policy", value);
+    }
+    
+    response
+}
+
+// Middleware to check for SQL injection attempts
+async fn check_sql_injection(
+    axum::extract::State(_state): axum::extract::State<Arc<AppState>>,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Result<axum::response::Response, axum::http::StatusCode> {
+    // Extract client IP
+    let client_ip = request
+        .headers()
+        .get("x-forwarded-for")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|s| s.split(',').next())
+        .unwrap_or("unknown")
+        .trim()
+        .to_string();
+    
+    let uri = request.uri().clone();
+    let path = uri.path().to_string();
+    
+    // Check query parameters for SQL injection
+    if let Some(query_string) = uri.query() {
+        // Use query string directly (already decoded by axum)
+        let decoded = query_string;
+        
+        if SqlValidator::detect_sql_injection_patterns(&decoded) {
+            tracing::error!(
+                "SQL injection attempt detected from IP: {} on path: {} with query: {}",
+                client_ip, path, query_string
+            );
+            
+            return Err(axum::http::StatusCode::BAD_REQUEST);
+        }
+    }
+    
+    // Check sensitive headers for SQL injection
+    let headers = request.headers();
+    for (name, value) in headers {
+        if matches!(name.as_str(), "x-api-key" | "x-custom-header") {
+            if let Ok(value_str) = value.to_str() {
+                if SqlValidator::detect_sql_injection_patterns(value_str) {
+                    tracing::warn!(
+                        "SQL injection attempt in header '{}' from IP: {}",
+                        name, client_ip
+                    );
+                    return Err(axum::http::StatusCode::BAD_REQUEST);
+                }
+            }
+        }
+    }
+    
+    Ok(next.run(request).await)
 }
 
 // WebSocket routes (to be implemented)
