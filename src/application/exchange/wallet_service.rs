@@ -489,45 +489,31 @@ impl WalletService {
         let limit = limit.unwrap_or(50);
         let offset = offset.unwrap_or(0);
         
-        let mut query = String::from("SELECT * FROM wallet_transactions WHERE wallet_id IN (SELECT id FROM wallets WHERE user_id = $1)");
-        
-        if let Some(from_date) = from {
-            query.push_str(&format!(" AND created_at >= '{}'", from_date));
-        }
-        
-        if let Some(to_date) = to {
-            query.push_str(&format!(" AND created_at <= '{}'", to_date));
-        }
-        
-        query.push_str(&format!(" ORDER BY created_at DESC LIMIT {} OFFSET {}", limit, offset));
-        
-        let transactions = sqlx::query_as::<_, crate::domain::wallet::WalletTransaction>(&query)
-            .bind(user_id)
-            .fetch_all(&self.db)
-            .await?;
+        // Secure parameterized query - no SQL injection possible
+        let transactions = sqlx::query_as::<_, crate::domain::wallet::WalletTransaction>(
+            r#"
+            SELECT wt.* FROM wallet_transactions wt
+            INNER JOIN wallets w ON wt.wallet_id = w.id
+            WHERE w.user_id = $1
+              AND ($2::timestamptz IS NULL OR wt.created_at >= $2)
+              AND ($3::timestamptz IS NULL OR wt.created_at <= $3)
+            ORDER BY wt.created_at DESC
+            LIMIT $4 OFFSET $5
+            "#
+        )
+        .bind(user_id)
+        .bind(from)
+        .bind(to)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.db)
+        .await?;
         
         Ok(transactions)
     }
     
     pub async fn get_statistics(&self, user_id: Uuid, from: Option<DateTime<Utc>>, to: Option<DateTime<Utc>>) -> Result<crate::domain::wallet::WalletStatistics, AppError> {
-        // Calculate wallet statistics
-        let mut query = String::from(
-            "SELECT 
-                COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0) as total_in,
-                COALESCE(SUM(CASE WHEN amount < 0 THEN ABS(amount) ELSE 0 END), 0) as total_out,
-                COUNT(*) as transaction_count
-            FROM wallet_transactions 
-            WHERE wallet_id IN (SELECT id FROM wallets WHERE user_id = $1)"
-        );
-        
-        if let Some(from_date) = from {
-            query.push_str(&format!(" AND created_at >= '{}'", from_date));
-        }
-        
-        if let Some(to_date) = to {
-            query.push_str(&format!(" AND created_at <= '{}'", to_date));
-        }
-        
+        // Calculate wallet statistics with secure parameterized query
         #[derive(sqlx::FromRow)]
         struct StatsRow {
             total_in: Decimal,
@@ -535,10 +521,25 @@ impl WalletService {
             transaction_count: i64,
         }
         
-        let stats = sqlx::query_as::<_, StatsRow>(&query)
-            .bind(user_id)
-            .fetch_one(&self.db)
-            .await?;
+        // Secure parameterized query - no SQL injection possible
+        let stats = sqlx::query_as::<_, StatsRow>(
+            r#"
+            SELECT 
+                COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0) as total_in,
+                COALESCE(SUM(CASE WHEN amount < 0 THEN ABS(amount) ELSE 0 END), 0) as total_out,
+                COUNT(*) as transaction_count
+            FROM wallet_transactions wt
+            INNER JOIN wallets w ON wt.wallet_id = w.id
+            WHERE w.user_id = $1
+              AND ($2::timestamptz IS NULL OR wt.created_at >= $2)
+              AND ($3::timestamptz IS NULL OR wt.created_at <= $3)
+            "#
+        )
+        .bind(user_id)
+        .bind(from)
+        .bind(to)
+        .fetch_one(&self.db)
+        .await?;
         
         Ok(crate::domain::wallet::WalletStatistics {
             total_in: stats.total_in,

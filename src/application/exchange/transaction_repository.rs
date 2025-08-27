@@ -424,7 +424,9 @@ impl TransactionRepository {
     ) -> Result<TransactionStatistics, AppError> {
         let (start, end) = self.get_date_range(&period);
 
-        let mut query = r#"
+        // Secure parameterized query with optional changeur_id filter - no SQL injection possible
+        let result = sqlx::query(
+            r#"
             SELECT 
                 COUNT(*) as total_transactions,
                 COUNT(DISTINCT client_id) as unique_clients,
@@ -435,21 +437,14 @@ impl TransactionRepository {
                 COALESCE(AVG(EXTRACT(EPOCH FROM (completed_at - created_at))) FILTER (WHERE status = 'completed'), 0) as avg_completion_time_seconds
             FROM transactions
             WHERE created_at BETWEEN $1 AND $2
-        "#.to_string();
-
-        if changeur_id.is_some() {
-            query.push_str(" AND changeur_id = $3");
-        }
-
-        let mut query_builder = sqlx::query(&query)
-            .bind(start)
-            .bind(end);
-
-        if let Some(id) = changeur_id {
-            query_builder = query_builder.bind(id);
-        }
-
-        let result = query_builder.fetch_one(&self.db).await?;
+              AND ($3::uuid IS NULL OR changeur_id = $3)
+            "#
+        )
+        .bind(start)
+        .bind(end)
+        .bind(changeur_id)
+        .fetch_one(&self.db)
+        .await?;
 
         let total_transactions: i64 = result.get("total_transactions");
         let successful_transactions: i64 = result.get("successful_transactions");

@@ -15,6 +15,7 @@ use tower_http::{
 use crate::{
     application::auth::middleware::{AuthMiddleware, require_auth},
     presentation::rest::handlers::{auth, rates, exchange, wallet, health},
+    // presentation::middleware::{sql_injection_protection, security_headers},
     shared::state::AppState,
 };
 

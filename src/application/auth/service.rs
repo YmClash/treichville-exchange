@@ -527,25 +527,38 @@ impl AuthService {
     
     pub async fn get_users(&self, page: Option<u32>, limit: Option<u32>, role: Option<String>, active: Option<bool>) -> Result<Vec<User>, AppError> {
         let page = page.unwrap_or(1);
-        let limit = limit.unwrap_or(20);
-        let offset = (page - 1) * limit;
+        let limit = limit.unwrap_or(20) as i64;
+        let offset = ((page - 1) * (limit as u32)) as i64;
         
-        let mut query = "SELECT * FROM users WHERE 1=1".to_string();
+        // Validate role if provided
+        let validated_role = if let Some(r) = role {
+            match r.to_lowercase().as_str() {
+                "client" | "changeur" | "admin" => Some(r),
+                _ => return Err(AppError::validation(format!("Invalid role: {}. Must be 'client', 'changeur', or 'admin'", r))),
+            }
+        } else {
+            None
+        };
         
-        if let Some(role) = role {
-            query.push_str(&format!(" AND role = '{}'", role));
-        }
+        // Secure parameterized query - no SQL injection possible
+        let users = sqlx::query_as::<_, User>(
+            r#"
+            SELECT * FROM users
+            WHERE ($1::text IS NULL OR role::text = $1)
+              AND ($2::boolean IS NULL OR is_active = $2)
+            ORDER BY created_at DESC
+            LIMIT $3 OFFSET $4
+            "#
+        )
+        .bind(validated_role)
+        .bind(active)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.db)
+        .await
+        .map_err(|e| AppError::Database(e))?;
         
-        if let Some(active) = active {
-            query.push_str(&format!(" AND is_active = {}", active));
-        }
-        
-        query.push_str(&format!(" ORDER BY created_at DESC LIMIT {} OFFSET {}", limit, offset));
-        
-        sqlx::query_as::<_, User>(&query)
-            .fetch_all(&self.db)
-            .await
-            .map_err(|e| AppError::Database(e))
+        Ok(users)
     }
     
     pub async fn activate_user(&self, user_id: Uuid) -> Result<(), AppError> {

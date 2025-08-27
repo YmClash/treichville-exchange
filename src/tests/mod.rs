@@ -6,3 +6,6 @@ pub mod integration;
 
 #[cfg(test)]
 pub mod fixtures;
+
+#[cfg(test)]
+pub mod security;

@@ -3,6 +3,7 @@ use tokio::sync::Barrier;
 use rust_decimal::Decimal;
 use uuid::Uuid;
 use sqlx::postgres::PgPoolOptions;
+use treichville_exchange::application::exchange::WalletServiceTrait;
 
 #[cfg(test)]
 mod security_tests {
@@ -81,7 +82,7 @@ mod security_tests {
         
         // Check final balance
         let final_balance = wallet_service
-            .get_balance(user_id, "XOF")
+            .get_balance(user_id,)
             .await
             .expect("Failed to get balance");
         
@@ -147,13 +148,13 @@ mod security_tests {
         
         // Get initial balances
         let initial_balance1 = wallet_service
-            .get_balance(user1_id, "XOF")
+            .get_balance(user1_id,)
             .await
             .expect("Failed to get balance")
             .total_balance;
         
         let initial_balance2 = wallet_service
-            .get_balance(user2_id, "XOF")
+            .get_balance(user2_id,)
             .await
             .expect("Failed to get balance")
             .total_balance;
@@ -176,13 +177,13 @@ mod security_tests {
         
         // Check that balances are unchanged (atomic rollback)
         let final_balance1 = wallet_service
-            .get_balance(user1_id, "XOF")
+            .get_balance(user1_id,)
             .await
             .expect("Failed to get balance")
             .total_balance;
         
         let final_balance2 = wallet_service
-            .get_balance(user2_id, "XOF")
+            .get_balance(user2_id,)
             .await
             .expect("Failed to get balance")
             .total_balance;
@@ -311,7 +312,7 @@ mod security_tests {
         
         // Check that we didn't over-reserve
         let balance = wallet_service
-            .get_balance(user_id, "XOF")
+            .get_balance(user_id,)
             .await
             .expect("Failed to get balance");
         
