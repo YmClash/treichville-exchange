@@ -65,9 +65,27 @@ impl SecurityAuditService {
     
     /// Enregistrer un événement de sécurité
     pub async fn log_event(&self, event: SecurityEvent) -> Result<(), AppError> {
-        // TODO: Uncomment after creating security_events table
         // Log dans la base de données
-        /*
+        let event_type_str = match event.event_type {
+            SecurityEventType::SqlInjectionAttempt => "SqlInjectionAttempt",
+            SecurityEventType::AuthenticationFailed => "AuthenticationFailed",
+            SecurityEventType::AuthorizationDenied => "AuthorizationDenied",
+            SecurityEventType::RateLimitExceeded => "RateLimitExceeded",
+            SecurityEventType::SuspiciousActivity => "SuspiciousActivity",
+            SecurityEventType::DataBreach => "DataBreach",
+            SecurityEventType::AccountLocked => "AccountLocked",
+            SecurityEventType::PasswordChanged => "PasswordChanged",
+            SecurityEventType::TwoFactorEnabled => "TwoFactorEnabled",
+            SecurityEventType::TwoFactorDisabled => "TwoFactorDisabled",
+        }.to_string();
+        
+        let severity_str = match event.severity {
+            SeverityLevel::Low => "Low",
+            SeverityLevel::Medium => "Medium",
+            SeverityLevel::High => "High",
+            SeverityLevel::Critical => "Critical",
+        }.to_string();
+        
         let result = sqlx::query!(
             r#"
             INSERT INTO security_events (
@@ -77,8 +95,8 @@ impl SecurityAuditService {
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             "#,
             event.id,
-            serde_json::to_string(&event.event_type).unwrap(),
-            serde_json::to_string(&event.severity).unwrap(),
+            event_type_str,
+            severity_str,
             event.user_id,
             event.ip_address,
             event.user_agent,
@@ -91,8 +109,6 @@ impl SecurityAuditService {
         )
         .execute(&*self.db)
         .await;
-        */
-        let result: Result<(), AppError> = Ok(());
         
         // Log même si l'insertion échoue
         match result {
@@ -218,8 +234,6 @@ impl SecurityAuditService {
     
     /// Vérifier si une IP doit être bloquée
     async fn check_ip_for_blocking(&self, ip_address: &str) -> Result<(), AppError> {
-        // TODO: Uncomment after creating security_events table
-        /*
         // Compter les événements suspects récents
         let count = sqlx::query!(
             r#"
@@ -235,9 +249,6 @@ impl SecurityAuditService {
         .await?;
         
         if count.count.unwrap_or(0) >= 10 {
-        */
-        let count = 0;
-        if count >= 10 {
             // Bloquer l'IP
             self.block_ip(ip_address).await?;
             
@@ -245,7 +256,7 @@ impl SecurityAuditService {
             
             self.send_security_alert(
                 "IP Blocked",
-                &format!("IP {} blocked after {} suspicious events", ip_address, count),
+                &format!("IP {} blocked after {} suspicious events", ip_address, count.count.unwrap_or(0)),
                 &SeverityLevel::Critical,
             ).await;
         }
@@ -255,12 +266,10 @@ impl SecurityAuditService {
     
     /// Bloquer une adresse IP
     async fn block_ip(&self, ip_address: &str) -> Result<(), AppError> {
-        // TODO: Uncomment after creating blocked_ips table
-        /*
         sqlx::query!(
             r#"
-            INSERT INTO blocked_ips (ip_address, reason, blocked_at, blocked_until)
-            VALUES ($1, $2, NOW(), NOW() + INTERVAL '24 hours')
+            INSERT INTO blocked_ips (ip_address, reason, blocked_until)
+            VALUES ($1, $2, NOW() + INTERVAL '24 hours')
             ON CONFLICT (ip_address) DO UPDATE
             SET blocked_at = NOW(),
                 blocked_until = NOW() + INTERVAL '24 hours',
@@ -271,21 +280,19 @@ impl SecurityAuditService {
         )
         .execute(&*self.db)
         .await?;
-        */
         
         Ok(())
     }
     
     /// Vérifier si une IP est bloquée
     pub async fn is_ip_blocked(&self, ip_address: &str) -> Result<bool, AppError> {
-        // TODO: Uncomment after creating blocked_ips table
-        /*
         let result = sqlx::query!(
             r#"
             SELECT COUNT(*) as count
             FROM blocked_ips
             WHERE ip_address = $1
               AND blocked_until > NOW()
+              AND unblocked_at IS NULL
             "#,
             ip_address
         )
@@ -293,8 +300,6 @@ impl SecurityAuditService {
         .await?;
         
         Ok(result.count.unwrap_or(0) > 0)
-        */
-        Ok(false) // Temporairement retourner false
     }
     
     /// Envoyer une alerte de sécurité
@@ -312,8 +317,6 @@ impl SecurityAuditService {
     
     /// Obtenir les statistiques de sécurité
     pub async fn get_security_stats(&self, hours: i32) -> Result<SecurityStats, AppError> {
-        // TODO: Uncomment after creating security_events table
-        /*
         let stats = sqlx::query!(
             r#"
             SELECT 
@@ -323,41 +326,36 @@ impl SecurityAuditService {
                 COUNT(*) FILTER (WHERE severity = 'High') as high_events,
                 COUNT(DISTINCT ip_address) as unique_ips
             FROM security_events
-            WHERE created_at > NOW() - INTERVAL '{} hours'
+            WHERE created_at > NOW() - INTERVAL '1 hour' * $1
             "#,
-            hours
+            hours as i64
         )
         .fetch_one(&*self.db)
         .await?;
-        */
         
         Ok(SecurityStats {
-            sql_injection_attempts: 0,
-            auth_failures: 0,
-            critical_events: 0,
-            high_events: 0,
-            unique_ips: 0,
+            sql_injection_attempts: stats.sql_injection_attempts.unwrap_or(0) as u32,
+            auth_failures: stats.auth_failures.unwrap_or(0) as u32,
+            critical_events: stats.critical_events.unwrap_or(0) as u32,
+            high_events: stats.high_events.unwrap_or(0) as u32,
+            unique_ips: stats.unique_ips.unwrap_or(0) as u32,
             period_hours: hours as u32,
         })
     }
     
     /// Nettoyer les vieux événements
     pub async fn cleanup_old_events(&self, days: i32) -> Result<u64, AppError> {
-        // TODO: Uncomment after creating security_events table
-        /*
         let result = sqlx::query!(
             r#"
             DELETE FROM security_events
-            WHERE created_at < NOW() - INTERVAL '{} days'
+            WHERE created_at < NOW() - INTERVAL '1 day' * $1
             "#,
-            days
+            days as i64
         )
         .execute(&*self.db)
         .await?;
         
         Ok(result.rows_affected())
-        */
-        Ok(0) // Temporairement retourner 0
     }
 }
 
