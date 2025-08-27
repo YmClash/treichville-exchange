@@ -51,6 +51,7 @@ pub struct MetricsResponse {
     pub redis_pool: PoolMetrics,
     pub memory_usage: MemoryMetrics,
     pub business_metrics: BusinessMetrics,
+    pub security_metrics: SecurityMetrics,
 }
 
 #[derive(Debug, Serialize)]
@@ -73,6 +74,18 @@ pub struct BusinessMetrics {
     pub active_changeurs: u64,
     pub transactions_today: u64,
     pub volume_today_fcfa: rust_decimal::Decimal,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SecurityMetrics {
+    pub sql_injection_attempts_24h: u64,
+    pub auth_failures_24h: u64,
+    pub blocked_ips_active: u64,
+    pub critical_events_24h: u64,
+    pub high_events_24h: u64,
+    pub suspicious_ips_24h: u64,
+    pub security_alerts_sent_24h: u64,
+    pub last_security_event: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 
@@ -317,6 +330,63 @@ pub async fn metrics(
         business_metrics.volume_today_fcfa = row.try_get("volume").unwrap_or(rust_decimal::Decimal::ZERO);
     }
 
+    // Get security metrics
+    let mut security_metrics = SecurityMetrics {
+        sql_injection_attempts_24h: 0,
+        auth_failures_24h: 0,
+        blocked_ips_active: 0,
+        critical_events_24h: 0,
+        high_events_24h: 0,
+        suspicious_ips_24h: 0,
+        security_alerts_sent_24h: 0,
+        last_security_event: None,
+    };
+
+    // Query security events from last 24 hours
+    if let Ok(row) = sqlx::query(
+        "SELECT 
+            COUNT(*) FILTER (WHERE event_type = 'SqlInjectionAttempt') as sql_injection_attempts,
+            COUNT(*) FILTER (WHERE event_type = 'AuthenticationFailed') as auth_failures,
+            COUNT(*) FILTER (WHERE severity = 'Critical') as critical_events,
+            COUNT(*) FILTER (WHERE severity = 'High') as high_events,
+            COUNT(DISTINCT ip_address) as suspicious_ips,
+            MAX(created_at) as last_event
+         FROM security_events
+         WHERE created_at > NOW() - INTERVAL '24 hours'"
+    )
+    .fetch_one(&state.health_state.db)
+    .await {
+        security_metrics.sql_injection_attempts_24h = row.try_get::<i64, _>("sql_injection_attempts").unwrap_or(0) as u64;
+        security_metrics.auth_failures_24h = row.try_get::<i64, _>("auth_failures").unwrap_or(0) as u64;
+        security_metrics.critical_events_24h = row.try_get::<i64, _>("critical_events").unwrap_or(0) as u64;
+        security_metrics.high_events_24h = row.try_get::<i64, _>("high_events").unwrap_or(0) as u64;
+        security_metrics.suspicious_ips_24h = row.try_get::<i64, _>("suspicious_ips").unwrap_or(0) as u64;
+        security_metrics.last_security_event = row.try_get("last_event").ok();
+    }
+
+    // Query blocked IPs
+    if let Ok(row) = sqlx::query(
+        "SELECT COUNT(*) as count
+         FROM blocked_ips
+         WHERE blocked_until > NOW() 
+           AND unblocked_at IS NULL"
+    )
+    .fetch_one(&state.health_state.db)
+    .await {
+        security_metrics.blocked_ips_active = row.try_get::<i64, _>("count").unwrap_or(0) as u64;
+    }
+
+    // Query security alerts sent in last 24 hours
+    if let Ok(row) = sqlx::query(
+        "SELECT COUNT(*) as count
+         FROM security_alerts
+         WHERE sent_at > NOW() - INTERVAL '24 hours'"
+    )
+    .fetch_one(&state.health_state.db)
+    .await {
+        security_metrics.security_alerts_sent_24h = row.try_get::<i64, _>("count").unwrap_or(0) as u64;
+    }
+
     let response = MetricsResponse {
         uptime_seconds,
         total_requests: 0, // Would be tracked by middleware
@@ -325,6 +395,7 @@ pub async fn metrics(
         redis_pool: redis_pool_metrics,
         memory_usage: memory_metrics,
         business_metrics,
+        security_metrics,
     };
 
     Ok((StatusCode::OK, Json(response)))
@@ -339,4 +410,142 @@ pub async fn version() -> impl IntoResponse {
         "build_time": chrono::Utc::now().to_rfc3339(),
         "environment": std::env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string()),
     })))
+}
+
+// GET /metrics/prometheus - Prometheus format for Grafana
+pub async fn prometheus_metrics(
+    State(state): State<Arc<crate::shared::state::AppState>>,
+) -> AppResult<impl IntoResponse> {
+    let mut output = String::new();
+    
+    // Application info
+    output.push_str("# HELP treichville_info Application information\n");
+    output.push_str("# TYPE treichville_info gauge\n");
+    output.push_str(&format!("treichville_info{{version=\"{}\",environment=\"{}\"}} 1\n\n", 
+        env!("CARGO_PKG_VERSION"),
+        std::env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string())
+    ));
+    
+    // Database pool metrics
+    let pool = &state.health_state.db;
+    output.push_str("# HELP database_pool_size Database connection pool size\n");
+    output.push_str("# TYPE database_pool_size gauge\n");
+    output.push_str(&format!("database_pool_size {}\n", pool.size()));
+    
+    output.push_str("# HELP database_pool_idle Database idle connections\n");
+    output.push_str("# TYPE database_pool_idle gauge\n");
+    output.push_str(&format!("database_pool_idle {}\n", pool.num_idle()));
+    
+    // Security metrics from database
+    if let Ok(row) = sqlx::query(
+        "SELECT 
+            COUNT(*) FILTER (WHERE event_type = 'SqlInjectionAttempt' AND created_at > NOW() - INTERVAL '24 hours') as sql_injection_24h,
+            COUNT(*) FILTER (WHERE event_type = 'SqlInjectionAttempt' AND created_at > NOW() - INTERVAL '1 hour') as sql_injection_1h,
+            COUNT(*) FILTER (WHERE event_type = 'AuthenticationFailed' AND created_at > NOW() - INTERVAL '24 hours') as auth_failures_24h,
+            COUNT(*) FILTER (WHERE event_type = 'AuthenticationFailed' AND created_at > NOW() - INTERVAL '1 hour') as auth_failures_1h,
+            COUNT(*) FILTER (WHERE severity = 'Critical' AND created_at > NOW() - INTERVAL '24 hours') as critical_24h,
+            COUNT(*) FILTER (WHERE severity = 'High' AND created_at > NOW() - INTERVAL '24 hours') as high_24h,
+            COUNT(DISTINCT ip_address) FILTER (WHERE created_at > NOW() - INTERVAL '1 hour') as unique_ips_1h
+         FROM security_events"
+    )
+    .fetch_one(&state.health_state.db)
+    .await {
+        output.push_str("\n# HELP security_sql_injection_attempts_total Total SQL injection attempts\n");
+        output.push_str("# TYPE security_sql_injection_attempts_total counter\n");
+        output.push_str(&format!("security_sql_injection_attempts_total{{period=\"24h\"}} {}\n", 
+            row.try_get::<i64, _>("sql_injection_24h").unwrap_or(0)));
+        output.push_str(&format!("security_sql_injection_attempts_total{{period=\"1h\"}} {}\n", 
+            row.try_get::<i64, _>("sql_injection_1h").unwrap_or(0)));
+        
+        output.push_str("\n# HELP security_auth_failures_total Total authentication failures\n");
+        output.push_str("# TYPE security_auth_failures_total counter\n");
+        output.push_str(&format!("security_auth_failures_total{{period=\"24h\"}} {}\n", 
+            row.try_get::<i64, _>("auth_failures_24h").unwrap_or(0)));
+        output.push_str(&format!("security_auth_failures_total{{period=\"1h\"}} {}\n", 
+            row.try_get::<i64, _>("auth_failures_1h").unwrap_or(0)));
+        
+        output.push_str("\n# HELP security_critical_events_total Total critical security events\n");
+        output.push_str("# TYPE security_critical_events_total counter\n");
+        output.push_str(&format!("security_critical_events_total {{period=\"24h\"}} {}\n", 
+            row.try_get::<i64, _>("critical_24h").unwrap_or(0)));
+        
+        output.push_str("\n# HELP security_high_events_total Total high severity security events\n");
+        output.push_str("# TYPE security_high_events_total counter\n");
+        output.push_str(&format!("security_high_events_total{{period=\"24h\"}} {}\n", 
+            row.try_get::<i64, _>("high_24h").unwrap_or(0)));
+        
+        output.push_str("\n# HELP security_unique_ips Unique IP addresses seen\n");
+        output.push_str("# TYPE security_unique_ips gauge\n");
+        output.push_str(&format!("security_unique_ips{{period=\"1h\"}} {}\n", 
+            row.try_get::<i64, _>("unique_ips_1h").unwrap_or(0)));
+    }
+    
+    // Blocked IPs metrics
+    if let Ok(row) = sqlx::query(
+        "SELECT 
+            COUNT(*) as blocked_ips,
+            COUNT(*) FILTER (WHERE blocked_at > NOW() - INTERVAL '1 hour') as blocked_last_hour
+         FROM blocked_ips
+         WHERE blocked_until > NOW() AND unblocked_at IS NULL"
+    )
+    .fetch_one(&state.health_state.db)
+    .await {
+        output.push_str("\n# HELP security_blocked_ips Currently blocked IP addresses\n");
+        output.push_str("# TYPE security_blocked_ips gauge\n");
+        output.push_str(&format!("security_blocked_ips {}\n", 
+            row.try_get::<i64, _>("blocked_ips").unwrap_or(0)));
+        
+        output.push_str("\n# HELP security_ips_blocked_last_hour IPs blocked in the last hour\n");
+        output.push_str("# TYPE security_ips_blocked_last_hour counter\n");
+        output.push_str(&format!("security_ips_blocked_last_hour {}\n", 
+            row.try_get::<i64, _>("blocked_last_hour").unwrap_or(0)));
+    }
+    
+    // Business metrics
+    if let Ok(row) = sqlx::query(
+        "SELECT 
+            COUNT(DISTINCT CASE WHEN role != 'changeur' THEN id END) as active_users,
+            COUNT(DISTINCT CASE WHEN role = 'changeur' THEN id END) as active_changeurs
+         FROM users 
+         WHERE is_active = true"
+    )
+    .fetch_one(&state.health_state.db)
+    .await {
+        output.push_str("\n# HELP business_active_users Total active users\n");
+        output.push_str("# TYPE business_active_users gauge\n");
+        output.push_str(&format!("business_active_users {}\n", 
+            row.try_get::<i64, _>("active_users").unwrap_or(0)));
+        
+        output.push_str("\n# HELP business_active_changeurs Total active changeurs\n");
+        output.push_str("# TYPE business_active_changeurs gauge\n");
+        output.push_str(&format!("business_active_changeurs {}\n", 
+            row.try_get::<i64, _>("active_changeurs").unwrap_or(0)));
+    }
+    
+    // Transaction metrics
+    if let Ok(row) = sqlx::query(
+        "SELECT 
+            COUNT(*) as count,
+            COALESCE(SUM(amount), 0) as volume
+         FROM transactions 
+         WHERE created_at >= CURRENT_DATE"
+    )
+    .fetch_one(&state.health_state.db)
+    .await {
+        output.push_str("\n# HELP business_transactions_today Today's transaction count\n");
+        output.push_str("# TYPE business_transactions_today counter\n");
+        output.push_str(&format!("business_transactions_today {}\n", 
+            row.try_get::<i64, _>("count").unwrap_or(0)));
+        
+        output.push_str("\n# HELP business_volume_today_fcfa Today's transaction volume in FCFA\n");
+        output.push_str("# TYPE business_volume_today_fcfa gauge\n");
+        output.push_str(&format!("business_volume_today_fcfa {}\n", 
+            row.try_get::<rust_decimal::Decimal, _>("volume").unwrap_or(rust_decimal::Decimal::ZERO)));
+    }
+    
+    Ok((
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "text/plain; version=0.0.4")],
+        output
+    ))
 }
